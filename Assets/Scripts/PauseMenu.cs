@@ -41,7 +41,7 @@ public class PauseMenu : MonoBehaviour
     private Resolution[] resolutions; 
     
     // Arrays to map Dropdown indices to actual Unity values
-    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144, 170 }; // -1 = Unlimited
+    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144 }; // -1 = Unlimited
     private readonly int[] antiAliasingValues = { 0, 2, 4, 8 }; // 0 = Off
 
     void Start()

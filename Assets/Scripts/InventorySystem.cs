@@ -12,17 +12,13 @@ public class InventorySystem : MonoBehaviour
     public GameObject itemSlotPrefab; 
     public TextMeshProUGUI descriptionDisplay; 
     public TextMeshProUGUI feedbackText; 
-    
-    // NEW: Reference to the Discard Button
     public GameObject discardButton; 
 
     [Header("Settings")]
     public bool freezeTimeWhenOpen = false;
     public int maxSlots = 12; 
-    
-    // NEW: Settings for throwing items
     public float throwForce = 5f; 
-    public Transform playerCamera; // Assign Main Camera here
+    public Transform playerCamera; 
 
     public bool isOpen = false; 
     
@@ -35,11 +31,7 @@ public class InventorySystem : MonoBehaviour
         if (inventoryUI != null) inventoryUI.SetActive(false);
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (feedbackText != null) feedbackText.text = "";
-        
-        // NEW: Hide discard button on start
         if (discardButton != null) discardButton.SetActive(false);
-
-        // Fallback if camera isn't assigned
         if (playerCamera == null) playerCamera = Camera.main.transform;
     }
 
@@ -57,8 +49,6 @@ public class InventorySystem : MonoBehaviour
         if (freezeTimeWhenOpen) Time.timeScale = 0f;
         
         if (descriptionDisplay != null) descriptionDisplay.text = "";
-        
-        // Hide button initially when opening
         if (discardButton != null) discardButton.SetActive(false);
         markedItem = null;
 
@@ -95,20 +85,14 @@ public class InventorySystem : MonoBehaviour
         return true; 
     }
 
-    // --- NEW: Discard Logic ---
     public void DiscardMarkedItem()
     {
         if (markedItem == null) return;
 
-        // 1. Reactivate the object in the world
         markedItem.gameObject.SetActive(true);
-
-        // 2. Position it in front of the player
-        // (Offset by 1.5 units so it doesn't spawn inside the player)
         markedItem.transform.position = playerCamera.position + (playerCamera.forward * 1.5f);
         markedItem.transform.rotation = Quaternion.identity;
 
-        // 3. Enable Physics and Throw
         Rigidbody rb = markedItem.GetComponent<Rigidbody>();
         Collider col = markedItem.GetComponent<Collider>();
 
@@ -116,14 +100,12 @@ public class InventorySystem : MonoBehaviour
         if (rb != null)
         {
             rb.isKinematic = false;
-            rb.linearVelocity = Vector3.zero; // Reset any previous momentum
+            rb.linearVelocity = Vector3.zero; 
             rb.AddForce(playerCamera.forward * throwForce, ForceMode.VelocityChange);
         }
 
-        // 4. Remove from Inventory List
         collectedItems.Remove(markedItem);
         
-        // 5. Reset UI
         markedItem = null;
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (discardButton != null) discardButton.SetActive(false);
@@ -157,8 +139,6 @@ public class InventorySystem : MonoBehaviour
     {
         markedItem = item;
         if (descriptionDisplay != null) descriptionDisplay.text = item.itemDescription;
-
-        // NEW: Show the discard button when an item is selected
         if (discardButton != null) discardButton.SetActive(true);
 
         foreach (InventorySlot slot in activeSlots)
@@ -187,27 +167,55 @@ public class InventorySystem : MonoBehaviour
         if (feedbackText != null) feedbackText.text = "";
     }
 
+    // --- SAVE / LOAD HELPERS (Fixed) ---
+
     public List<string> GetItemNames()
     {
         List<string> names = new List<string>();
-        foreach (var item in collectedItems) names.Add(item.itemName);
+        foreach (var item in collectedItems)
+        {
+            names.Add(item.itemName);
+        }
         return names;
     }
 
     public void LoadItems(List<string> itemNames)
     {
+        // 1. Clean up existing instantiated items to prevent memory leaks
+        foreach (var item in collectedItems)
+        {
+            if (item != null) Destroy(item.gameObject);
+        }
         collectedItems.Clear();
+
+        // 2. Reset UI State
+        markedItem = null;
+        if (descriptionDisplay != null) descriptionDisplay.text = "";
+        if (discardButton != null) discardButton.SetActive(false);
+
+        // 3. Rebuild list from names
         foreach (string name in itemNames)
         {
             GameObject itemPrefab = Resources.Load<GameObject>("Items/" + name);
+            
             if (itemPrefab != null)
             {
                 GameObject itemObj = Instantiate(itemPrefab);
                 itemObj.SetActive(false); 
                 PickableItem pickable = itemObj.GetComponent<PickableItem>();
-                if (pickable != null) collectedItems.Add(pickable);
+                
+                if (pickable != null)
+                {
+                    collectedItems.Add(pickable);
+                }
+            }
+            else
+            {
+                Debug.LogWarning("Inventory Load: Could not find item in Resources/Items/" + name);
             }
         }
+
+        // 4. Refresh UI if open
         if (isOpen) RefreshUI();
     }
 }

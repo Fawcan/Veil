@@ -13448,8 +13448,8 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 545515188}
-        m_TargetAssemblyTypeName: PauseMenu, Assembly-CSharp
+      - m_Target: {fileID: 1148033662}
+        m_TargetAssemblyTypeName: GameManager, Assembly-CSharp
         m_MethodName: LoadGame
         m_Mode: 1
         m_Arguments:
@@ -15560,6 +15560,7 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 1740730721}
+  - {fileID: 1148033663}
   - {fileID: 410087041}
   - {fileID: 763324203}
   - {fileID: 815419697}
@@ -15583,5 +15584,4 @@ SceneRoots:
   - {fileID: 1451678908}
   - {fileID: 1920648603}
   - {fileID: 545515184}
-  - {fileID: 1148033663}
   - {fileID: 986270192}
