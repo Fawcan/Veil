@@ -12,6 +12,7 @@ public class FirstPersonController : MonoBehaviour
     [Header("Camera Look")]
     public Transform cameraTransform;
     public float lookSensitivity = 0.1f;
+    public bool isYInverted = false; 
 
     [Header("Crouching")]
     public float crouchHeightMultiplier = 0.5f;
@@ -22,17 +23,18 @@ public class FirstPersonController : MonoBehaviour
     public LayerMask obstacleMask;
     
     [Header("Interaction")]
-    public float interactionRange = 2f;
+    public float interactionRange = 2f; 
     public float dropForce = 5f;
-    [Tooltip("How much to slow down movement when interacting with a door (e.g., 0.3 = 30% speed).")]
-    public float doorInteractSpeedMultiplier = 0.3f; 
+    [Tooltip("Multiplier for movement speed while interacting with an object.")]
+    public float interactSpeedMultiplier = 0.75f; 
     [Tooltip("How far the player can move from a door before it's auto-released.")]
     public float interactionBreakDistance = 3f; 
 
-    [Header("UI")]
-    public PauseMenu pauseMenu; // Drag your Canvas here in Inspector
-    
-    // --- Private State Variables ---
+    [Header("UI & Systems")]
+    public PauseMenu pauseMenu; 
+    public InventorySystem inventory;
+
+    // --- Private Variables ---
     private float standingHeight;
     private Vector3 standingCenter;
     private float standingCameraY;
@@ -43,14 +45,12 @@ public class FirstPersonController : MonoBehaviour
     private bool isGrounded;
     private float xRotation = 0f;
 
-    // Input action variables
     private Vector2 moveInput;
     private Vector2 lookInput;
     private bool jumpPressed;
     
     private PickableItem currentlyHeldItem = null;
     private InteractableDoor heldDoor = null;
-    // private Collider currentDoorCollider = null; // Removed
 
     void Start()
     {
@@ -62,40 +62,26 @@ public class FirstPersonController : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
-    public void SetLookSensitivity(float sensitivity)
-    {
-        // lookSensitivity is the public variable you already have in the controller
-        lookSensitivity = sensitivity; 
-    }
 
     void Update()
     {
         // --- Ground Check ---
         isGrounded = controller.isGrounded;
-        if (isGrounded && playerVelocity.y < 0)
-        {
-            playerVelocity.y = -2f;
-        }
-
-        // --- Crouch Handling ---
+        if (isGrounded && playerVelocity.y < 0) { playerVelocity.y = -2f; }
+        
+        // --- Crouch ---
         UpdateCrouchState();
         ApplyCrouch();
 
         // --- Movement ---
         float currentSpeed = isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed;
-        if (heldDoor != null)
-        {
-            currentSpeed *= doorInteractSpeedMultiplier;
-        }
+        if (heldDoor != null) { currentSpeed *= interactSpeedMultiplier; }
         Vector3 moveDirection = transform.right * moveInput.x + transform.forward * moveInput.y;
         controller.Move(moveDirection * currentSpeed * Time.deltaTime);
 
-
-        // --- Jumping ---
-        if (heldDoor == null)
-        {
-            if (jumpPressed && isGrounded && !isCrouching)
-            {
+        // --- Jump ---
+        if (heldDoor == null) {
+            if (jumpPressed && isGrounded && !isCrouching) {
                 playerVelocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
                 jumpPressed = false; 
             }
@@ -107,191 +93,95 @@ public class FirstPersonController : MonoBehaviour
 
 
         // --- Camera Look (Mouse) ---
+        
+        // 1. Check if Pause Menu is open
+        if (PauseMenu.GameIsPaused) return;
+
+        // 2. NEW: Check if Inventory is open
+        // If inventory is open, we stop camera rotation here.
+        if (inventory != null && inventory.isOpen) return;
+
         float mouseX = lookInput.x * lookSensitivity;
         float mouseY = lookInput.y * lookSensitivity;
+        if (isYInverted) mouseY = -mouseY;
 
-        // Add this check:
-        if (PauseMenu.GameIsPaused) return; 
-
-        mouseX = lookInput.x * lookSensitivity;
-        
-        if (heldDoor != null)
-        {
-            // Check for distance break
+        // Door Interaction Look
+        if (heldDoor != null) {
             float distance = Vector3.Distance(transform.position, heldDoor.transform.position);
-            if (distance > interactionBreakDistance)
-            {
-                // Force release (No collision re-enable needed here)
-                heldDoor.StopInteract();
-                heldDoor = null;
-            }
-            else
-            {
-                // Still holding and in range, pass input to door
-                heldDoor.UpdateInteraction(lookInput.x);
-            }
+            if (distance > interactionBreakDistance) { heldDoor.StopInteract(); heldDoor = null; }
+            else { heldDoor.UpdateInteraction(lookInput.x); }
         }
         
-        if (heldDoor == null)
-        {
-            // Normal Look
+        // Normal Look
+        if (heldDoor == null) {
             transform.Rotate(Vector3.up * mouseX);
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -90f, 90f);
             cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
         }
     }
-
-    // --- Private Helper Methods ---
-
-    private void UpdateCrouchState()
-    {
-        if (crouchPressed && isGrounded)
-        {
-            isCrouching = true;
-        }
-        else if (!crouchPressed && isCrouching)
-        {
-            // Check if there is space to stand up
-            Vector3 rayOrigin = transform.position + controller.center + (Vector3.up * (controller.height / 2) * 0.9f);
-            float rayDistance = (standingHeight - controller.height) + 0.1f;
-
-            if (!Physics.Raycast(rayOrigin, Vector3.up, rayDistance, obstacleMask))
-            {
-                isCrouching = false;
-            }
-        }
-    }
-
-    private void ApplyCrouch()
-    {
-        float targetHeight = isCrouching ? standingHeight * crouchHeightMultiplier : standingHeight;
-        Vector3 targetCenter = isCrouching ? standingCenter * crouchHeightMultiplier : standingCenter;
-        float targetCameraY = isCrouching ? standingCameraY * crouchHeightMultiplier : standingCameraY;
-
-        controller.height = Mathf.Lerp(controller.height, targetHeight, crouchLerpSpeed * Time.deltaTime);
-        
-        // Fixed Vector3.Lergit typo to Vector3.Lerp
-        controller.center = Vector3.Lerp(controller.center, targetCenter, crouchLerpSpeed * Time.deltaTime);
-        
-        Vector3 cameraPosition = cameraTransform.localPosition;
-        cameraPosition.y = Mathf.Lerp(cameraPosition.y, targetCameraY, crouchLerpSpeed * Time.deltaTime);
-        cameraTransform.localPosition = cameraPosition;
-    }
-
-    private void DropItem()
-    {
-        if (currentlyHeldItem != null)
-        {
-            currentlyHeldItem.Drop(cameraTransform, dropForce);
-            currentlyHeldItem = null;
-        }
-    }
-
-    // --- Input System Methods ---
     
-    public void OnMove(InputAction.CallbackContext context)
+    // --- Helper Methods ---
+    private void UpdateCrouchState() { if(crouchPressed && isGrounded){isCrouching=true;}else if(!crouchPressed && isCrouching){Vector3 rO=transform.position+controller.center+(Vector3.up*(controller.height/2)*0.9f);float rD=(standingHeight-controller.height)+0.1f;if(!Physics.Raycast(rO,Vector3.up,rD,obstacleMask)){isCrouching=false;}}}
+    private void ApplyCrouch() { float tH=isCrouching?standingHeight*crouchHeightMultiplier:standingHeight;Vector3 tC=isCrouching?standingCenter*crouchHeightMultiplier:standingCenter;float tCY=isCrouching?standingCameraY*crouchHeightMultiplier:standingCameraY;controller.height=Mathf.Lerp(controller.height,tH,crouchLerpSpeed*Time.deltaTime);controller.center=Vector3.Lerp(controller.center,tC,crouchLerpSpeed*Time.deltaTime);Vector3 cP=cameraTransform.localPosition;cP.y=Mathf.Lerp(cP.y,tCY,crouchLerpSpeed*Time.deltaTime);cameraTransform.localPosition=cP;}
+    private void DropItem() { if(currentlyHeldItem!=null){currentlyHeldItem.Drop(cameraTransform, dropForce);currentlyHeldItem=null;}}
+    public void SetLookSensitivity(float sensitivity) { lookSensitivity = sensitivity; }
+    public void SetInvertY(bool inverted) { isYInverted = inverted; }
+    
+    // --- Input System Methods ---
+    public void OnMove(InputAction.CallbackContext context) { moveInput = context.ReadValue<Vector2>(); }
+    public void OnLook(InputAction.CallbackContext context) { lookInput = context.ReadValue<Vector2>(); }
+    public void OnCrouch(InputAction.CallbackContext context) { crouchPressed = context.ReadValueAsButton(); }
+    public void OnJump(InputAction.CallbackContext context) { if (heldDoor != null) { jumpPressed = false; } else { jumpPressed = context.ReadValueAsButton(); } }
+    public void OnPause(InputAction.CallbackContext context) { if (context.performed && pauseMenu != null) pauseMenu.TogglePause(); }
+    public void OnInventory(InputAction.CallbackContext context) { if (context.performed && inventory != null) inventory.ToggleInventory(); }
+
+    // --- Save / Load Helpers ---
+    public float GetCameraPitch() { return xRotation; }
+    public void LoadState(Vector3 position, Quaternion rotation, float pitch)
     {
-        moveInput = context.ReadValue<Vector2>();
+        controller.enabled = false;
+        transform.position = position;
+        transform.rotation = rotation;
+        xRotation = pitch;
+        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        controller.enabled = true;
     }
 
-
-    public void OnLook(InputAction.CallbackContext context)
-    {
-        lookInput = context.ReadValue<Vector2>();
-    }
-
-    public void OnCrouch(InputAction.CallbackContext context)
-    {
-        if (context.performed) // Only trigger once on press
-        {
-            crouchPressed = !crouchPressed; // Toggle
-        }
-    }
-
-    public void OnJump(InputAction.CallbackContext context)
-    {
-        // Disable jump input if door is held
-        if (heldDoor != null)
-        {
-            jumpPressed = false;
-        }
-        else
-        {
-            jumpPressed = context.ReadValueAsButton();
-        }
-    }
-
+    // --- Interaction ---
     public void OnInteract(InputAction.CallbackContext context)
     {
-        // --- 1. HANDLE BUTTON RELEASE (The "Hold" Logic) ---
-        // If the button was released (Canceled) or is no longer pressed
         if (context.canceled || !context.ReadValueAsButton())
         {
-            // If we were holding a door, release it now.
-            if (heldDoor != null)
-            {
-                heldDoor.StopInteract();
-                heldDoor = null;
-            }
-            // We do NOT drop items here, allowing them to "stick" to the hand.
+            if (heldDoor != null) { heldDoor.StopInteract(); heldDoor = null; }
             return;
         }
 
-        // --- 2. HANDLE BUTTON PRESS (The "Toggle" Logic) ---
-        // We only want to run the pickup/drop logic on the initial press (Performed)
         if (context.performed)
         {
-            // A. Drop currently held item (Toggle behavior)
-            if (currentlyHeldItem != null)
-            {
-                DropItem();
-                return;
-            }
+            if (currentlyHeldItem != null) { DropItem(); return; }
 
-            // B. Raycast to find new object
             Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
             RaycastHit hit;
 
             if (Physics.Raycast(ray, out hit, interactionRange))
             {
-                // Check for PickableItem (Toggle behavior)
+                // 1. Pickable Item
                 PickableItem item = hit.collider.GetComponent<PickableItem>();
                 if (item != null)
                 {
-                    item.PickUp(cameraTransform);
-                    currentlyHeldItem = item;
+                    if (item.isStorable && inventory != null) { inventory.AddItem(item); item.gameObject.SetActive(false); }
+                    else { item.PickUp(cameraTransform); currentlyHeldItem = item; }
                     return;
                 }
 
-                // Check for InteractableDoor (Hold behavior)
+                // 2. Interactable Door
                 InteractableDoor door = hit.collider.GetComponentInParent<InteractableDoor>();
-                if (door != null)
-                {
-                    heldDoor = door;
-                    door.StartInteract();
-                    // We don't need to do anything else; 
-                    // The 'Canceled' check at the top will handle releasing it later.
-                    return;
-                }
-                
-                Debug.Log("Interacting with: " + hit.collider.name);
-            }
-        }
-    }
+                if (door != null) { heldDoor = door; door.StartInteract(); return; }
 
-    public void OnPause(InputAction.CallbackContext context)
-    {
-        // Only trigger on the initial press
-        if (context.performed) 
-        {
-            if (pauseMenu != null)
-            {
-                pauseMenu.TogglePause();
-            }
-            else
-            {
-                Debug.LogWarning("Pause Menu is not assigned in the Inspector!");
+                // 3. Save Point
+                SavePoint savePoint = hit.collider.GetComponent<SavePoint>();
+                if (savePoint != null) { savePoint.Interact(); return; }
             }
         }
     }

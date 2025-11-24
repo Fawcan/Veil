@@ -66,6 +66,23 @@ public class PauseMenu : MonoBehaviour
         InitializeGameplaySettings();
     }
 
+
+    public void LoadGame()
+    {
+        if (GameManager.Instance != null)
+        {
+            // Unpause the game state first
+            Resume();
+            
+            // Trigger the load
+            GameManager.Instance.LoadGame();
+        }
+        else
+        {
+            Debug.LogError("Game Manager not found!");
+        }
+    }
+
     // --- INITIALIZATION HELPERS ---
 
     void InitializeGameplaySettings()
