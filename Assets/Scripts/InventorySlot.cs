@@ -8,19 +8,22 @@ public class InventorySlot : MonoBehaviour
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI descriptionText;
     public Image iconImage;
+    
+    [Header("Selection Visuals")]
+    public Button slotButton; // The Button component on this slot
+    public Image backgroundToHighlight; // The image to color (usually the slot background)
+    public Color defaultColor = Color.white;
+    public Color selectedColor = Color.yellow; // Color when marked
 
-    // This method is called by the InventorySystem to fill the slot with data
+    private PickableItem myItem;
+
+    // We store the data here
     public void SetItem(PickableItem item)
     {
-        if (nameText != null)
-        {
-            nameText.text = item.itemName;
-        }
+        myItem = item;
 
-        if (descriptionText != null)
-        {
-            descriptionText.text = item.itemDescription;
-        }
+        if (nameText != null) nameText.text = item.itemName;
+        if (descriptionText != null) descriptionText.text = item.itemDescription;
 
         if (iconImage != null)
         {
@@ -31,9 +34,19 @@ public class InventorySlot : MonoBehaviour
             }
             else
             {
-                // If no icon is provided, hide the image component
                 iconImage.enabled = false;
             }
+        }
+        
+        // Reset visual state
+        SetSelected(false);
+    }
+
+    public void SetSelected(bool isSelected)
+    {
+        if (backgroundToHighlight != null)
+        {
+            backgroundToHighlight.color = isSelected ? selectedColor : defaultColor;
         }
     }
 }

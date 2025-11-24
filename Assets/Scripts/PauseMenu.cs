@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using TMPro; // Required for TextMeshProUGUI and TMP_Dropdown
-using System.Collections.Generic; // Required for List<string>
-using System.Linq; // Required for LINQ operations like ToList()
+using TMPro; 
+using System.Collections.Generic; 
+using System.Linq; 
+using UnityEngine.Audio; // NEW: Required for AudioMixer
 
 public class PauseMenu : MonoBehaviour
 {
@@ -13,18 +14,23 @@ public class PauseMenu : MonoBehaviour
     public GameObject pauseMenuUI;
     public GameObject settingsMenuUI;
 
+    [Header("Audio")]
+    public AudioMixer masterMixer; // NEW: Reference to the Audio Mixer asset
+
     [Header("Settings Controls - Gameplay")]
     public Slider volumeSlider; 
+    public Slider musicVolumeSlider; // NEW: Music Volume Slider
     public Slider lookSensitivitySlider; 
     public Slider fovSlider; 
     public TMP_Dropdown resolutionDropdown;
     public TMP_Dropdown displayModeDropdown;
+    public Toggle invertYToggle; 
 
     [Header("Settings Controls - Graphics")]
-    public Toggle vSyncToggle; // NEW
-    public TMP_Dropdown framerateDropdown; // NEW
-    public TMP_Dropdown qualityDropdown; // NEW
-    public TMP_Dropdown antiAliasingDropdown; // NEW
+    public Toggle vSyncToggle; 
+    public TMP_Dropdown framerateDropdown; 
+    public TMP_Dropdown qualityDropdown; 
+    public TMP_Dropdown antiAliasingDropdown; 
 
     [Header("Settings Displays")]
     public TextMeshProUGUI volumeText; 
@@ -35,7 +41,7 @@ public class PauseMenu : MonoBehaviour
     private Resolution[] resolutions; 
     
     // Arrays to map Dropdown indices to actual Unity values
-    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144 }; // -1 = Unlimited
+    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144, 170 }; // -1 = Unlimited
     private readonly int[] antiAliasingValues = { 0, 2, 4, 8 }; // 0 = Off
 
     void Start()
@@ -64,30 +70,14 @@ public class PauseMenu : MonoBehaviour
 
         // Initialize Gameplay/Audio Settings (using default values from the last prompt)
         InitializeGameplaySettings();
-    }
-
-
-    public void LoadGame()
-    {
-        if (GameManager.Instance != null)
-        {
-            // Unpause the game state first
-            Resume();
-            
-            // Trigger the load
-            GameManager.Instance.LoadGame();
-        }
-        else
-        {
-            Debug.LogError("Game Manager not found!");
-        }
+        InitializeAudioSettings();
     }
 
     // --- INITIALIZATION HELPERS ---
 
     void InitializeGameplaySettings()
     {
-        // 1. Volume (Default 75%)
+        // 1. Master Volume (Default 75%)
         float defaultVolume = 0.75f;
         AudioListener.volume = defaultVolume;
         if (volumeSlider != null) volumeSlider.value = defaultVolume;
@@ -102,6 +92,25 @@ public class PauseMenu : MonoBehaviour
         float defaultSensitivity = 0.1f;
         if (lookSensitivitySlider != null) lookSensitivitySlider.value = defaultSensitivity;
         SetLookSensitivity(defaultSensitivity); 
+
+        // 4. Invert Y (Default False)
+        bool defaultInvertY = false;
+        if (invertYToggle != null) invertYToggle.isOn = defaultInvertY;
+        SetInvertY(defaultInvertY);
+    }
+    
+    // NEW: Initialization for Music Volume
+    void InitializeAudioSettings()
+    {
+        float defaultMusicVolume = 0.75f; // Default 75%
+
+        if (musicVolumeSlider != null)
+        {
+            musicVolumeSlider.value = defaultMusicVolume;
+        }
+
+        // Must call the setter to apply the default value to the mixer
+        SetMusicVolume(defaultMusicVolume);
     }
 
     void InitializeResolutionDropdown()
@@ -286,14 +295,26 @@ public class PauseMenu : MonoBehaviour
     }
 
 
-    // --- SETTINGS FUNCTIONS (Gameplay) ---
+    // --- SETTINGS FUNCTIONS (Audio & Gameplay) ---
     
+    // Master Volume
     public void SetVolume(float volume)
     {
         AudioListener.volume = volume;
         if (volumeText != null)
         {
             volumeText.text = Mathf.RoundToInt(volume * 100f).ToString() + "%";
+        }
+    }
+
+    // NEW: Music Volume
+    public void SetMusicVolume(float volume)
+    {
+        if (masterMixer != null)
+        {
+            // Converts linear slider value (0.0 to 1.0) to logarithmic decibels (-80.0 to 0.0)
+            float dbVolume = volume > 0 ? Mathf.Log10(volume) * 20 : -80f;
+            masterMixer.SetFloat("MusicVolume", dbVolume);
         }
     }
 
@@ -345,7 +366,15 @@ public class PauseMenu : MonoBehaviour
         Screen.SetResolution(Screen.currentResolution.width, Screen.currentResolution.height, mode);
     }
 
-    // --- NEW: SETTINGS FUNCTIONS (Graphics) ---
+    public void SetInvertY(bool inverted)
+    {
+        if (controller != null)
+        {
+            controller.SetInvertY(inverted);
+        }
+    }
+
+    // --- SETTINGS FUNCTIONS (Graphics) ---
 
     public void SetVSync(bool isVSyncOn)
     {
