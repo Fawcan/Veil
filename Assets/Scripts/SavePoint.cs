@@ -8,15 +8,26 @@ public class SavePoint : MonoBehaviour
         
         if (GameManager.Instance != null)
         {
+            // 1. Perform the Save
             GameManager.Instance.SaveGame();
-            Debug.Log("Game Saved at Save Point!");
-
-            // Optional: Add visual/audio feedback here
-            // e.g., PlaySound(saveSound);
+            
+            // 2. Find the Inventory System to use its UI Feedback
+            // (We use FindFirstObjectByType because there should only be one player/inventory)
+            InventorySystem inventory = FindFirstObjectByType<InventorySystem>();
+            
+            if (inventory != null)
+            {
+                inventory.ShowFeedback("Game Saved");
+            }
+            else
+            {
+                // Fallback if inventory isn't found (e.g., pure console log)
+                Debug.Log("Game Saved (Inventory UI not found)");
+            }
         }
         else
         {
-            Debug.LogError("GameManager not found in scene!");
+            Debug.LogError("GameManager not found in scene! Save failed.");
         }
     }
 }

@@ -33,16 +33,10 @@ public class GameManager : MonoBehaviour
         }
 
         SaveData data = new SaveData();
-
-        // 1. Save Player
         data.playerPosition = new float[] { player.transform.position.x, player.transform.position.y, player.transform.position.z };
         data.playerRotation = new float[] { player.transform.rotation.x, player.transform.rotation.y, player.transform.rotation.z, player.transform.rotation.w };
         data.cameraPitch = player.GetCameraPitch(); 
-
-        // 2. Save Inventory
         data.inventoryItemNames = inventory.GetItemNames(); 
-
-        // 3. Save Scene
         data.sceneIndex = SceneManager.GetActiveScene().buildIndex;
 
         SaveSystem.SaveGame(data);
@@ -55,41 +49,60 @@ public class GameManager : MonoBehaviour
 
         if (data != null)
         {
-            // Reload scene if necessary
+            // 1. Scene Management (if needed)
             if (SceneManager.GetActiveScene().buildIndex != data.sceneIndex)
             {
+                // This is the cleanest way to handle scene load and data application
                 SceneManager.LoadScene(data.sceneIndex);
-                // Note: In a complex game, you'd use OnSceneLoaded event to wait for the load.
-                // For simple setups, Unity might handle the objects if they persist, 
-                // but FindReferences below handles the re-link.
+                // Note: If you use SceneManager.LoadScene, you MUST use the 
+                // SceneManager.sceneLoaded event to call ApplyLoadedData(data).
+                // For now, we assume a single scene or persistent player objects.
             }
 
-            // Force find references again in case objects were destroyed/recreated
-            FindReferences(); 
-            
-            if (player != null)
-            {
-                Vector3 pos = new Vector3(data.playerPosition[0], data.playerPosition[1], data.playerPosition[2]);
-                Quaternion rot = new Quaternion(data.playerRotation[0], data.playerRotation[1], data.playerRotation[2], data.playerRotation[3]);
-                player.LoadState(pos, rot, data.cameraPitch);
-            }
+            ApplyLoadedData(data);
 
-            if (inventory != null)
-            {
-                inventory.LoadItems(data.inventoryItemNames);
-            }
-
-            Debug.Log("Game Loaded Successfully.");
         }
         else
         {
-            Debug.Log("No Save File Found.");
+            Debug.Log("No Save File Found. Cannot load game.");
         }
+    }
+
+    private void ApplyLoadedData(SaveData data)
+    {
+        // 2. Critical: Ensure all references are current after potential scene loads
+        FindReferences(); 
+        
+        // 3. Apply Player State
+        if (player != null)
+        {
+            Vector3 pos = new Vector3(data.playerPosition[0], data.playerPosition[1], data.playerPosition[2]);
+            Quaternion rot = new Quaternion(data.playerRotation[0], data.playerRotation[1], data.playerRotation[2], data.playerRotation[3]);
+            player.LoadState(pos, rot, data.cameraPitch);
+        }
+        else
+        {
+            Debug.LogError("Load Failed: Player (FirstPersonController) reference is missing after FindReferences.");
+        }
+
+        // 4. Apply Inventory State
+        if (inventory != null)
+        {
+            inventory.LoadItems(data.inventoryItemNames);
+            Debug.Log($"Inventory Load Initiated with {data.inventoryItemNames.Count} items.");
+        }
+        else
+        {
+            Debug.LogError("Load Failed: InventorySystem reference is missing after FindReferences.");
+        }
+
+        Debug.Log("Game Load Attempt Complete.");
+        inventory.ShowFeedback("Game Loaded");
     }
 
     private void FindReferences()
     {
-        // Use the modern Find function
+        // Only find if null, for performance
         if (player == null) player = FindFirstObjectByType<FirstPersonController>();
         if (inventory == null) inventory = FindFirstObjectByType<InventorySystem>();
     }

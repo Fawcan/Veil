@@ -13,7 +13,8 @@ public class PickableItem : MonoBehaviour
     private Collider col;
     private bool isPickedUp = false;
 
-    void Start()
+    // FIX: Changed to protected so subclasses can call base.Start()
+    protected void Start()
     {
         rb = GetComponent<Rigidbody>();
         col = GetComponent<Collider>();
