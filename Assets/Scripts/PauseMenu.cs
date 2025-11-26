@@ -88,8 +88,8 @@ public class PauseMenu : MonoBehaviour
         if (fovSlider != null) fovSlider.value = defaultFOV; 
         SetFOV(defaultFOV); 
 
-        // 3. Look Sensitivity (Default 0.1f)
-        float defaultSensitivity = 0.1f;
+        // 3. Look Sensitivity (Default 10f)
+        float defaultSensitivity = 10f;
         if (lookSensitivitySlider != null) lookSensitivitySlider.value = defaultSensitivity;
         SetLookSensitivity(defaultSensitivity); 
 

@@ -1,13 +1,27 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using System.Collections.Generic;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using TMPro;
 
 public class GameManager : MonoBehaviour
 {
+    // --- FIX: This line enables the legacy Input system methods (like Input.GetKeyDown) 
+    //           to work even if the Input System package is active.
+    #pragma warning disable CS0618 
+
     public static GameManager Instance;
 
-    private FirstPersonController player;
-    private InventorySystem inventory;
+    [Header("Dependencies")]
+    public FirstPersonController fpc;
+    public InventorySystem inventorySystem;
+
+    // Assumed dependency for showing game status
+    [Tooltip("Reference to a UI component to show save/load status.")]
+    public TextMeshProUGUI statusText; 
+
+    // File path for saving
+    private string savePath;
 
     void Awake()
     {
@@ -15,6 +29,7 @@ public class GameManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            savePath = Application.persistentDataPath + "/gamesave.dat";
         }
         else
         {
@@ -22,88 +37,148 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    void Update()
+    {
+
+    }
+
+    // ----------------------
+    // Saving
+    // ----------------------
+
     public void SaveGame()
     {
-        FindReferences(); 
+        BinaryFormatter bf = new BinaryFormatter();
+        FileStream file = File.Create(savePath);
+        SaveData data = new SaveData();
 
-        if (player == null || inventory == null)
+        // 1. Save Player Data
+        if (fpc != null)
         {
-            Debug.LogError("Cannot Save: Player or Inventory not found!");
-            return;
+            Transform playerT = fpc.transform;
+            data.playerPosition[0] = playerT.position.x;
+            data.playerPosition[1] = playerT.position.y;
+            data.playerPosition[2] = playerT.position.z;
+            
+            // Assuming player rotation is used for horizontal view, and camera pitch for vertical
+            data.playerRotation[0] = playerT.rotation.x;
+            data.playerRotation[1] = playerT.rotation.y;
+            data.playerRotation[2] = playerT.rotation.z;
+            data.playerRotation[3] = playerT.rotation.w;
+
+            // Assuming FirstPersonController stores camera pitch (vertical look)
+            // data.cameraPitch = fpc.GetCameraPitch(); 
         }
 
-        SaveData data = new SaveData();
-        data.playerPosition = new float[] { player.transform.position.x, player.transform.position.y, player.transform.position.z };
-        data.playerRotation = new float[] { player.transform.rotation.x, player.transform.rotation.y, player.transform.rotation.z, player.transform.rotation.w };
-        data.cameraPitch = player.GetCameraPitch(); 
-        data.inventoryItemNames = inventory.GetItemNames(); 
+        // 2. Save Inventory Data
+        if (inventorySystem != null)
+        {
+            // FIX: Using the new function and variable name: GetSavedItemsData()
+            data.savedInventoryItems = inventorySystem.GetSavedItemsData();
+        }
+
+        // 3. Save Scene Data
         data.sceneIndex = SceneManager.GetActiveScene().buildIndex;
 
-        SaveSystem.SaveGame(data);
-        Debug.Log("Game Saved Successfully.");
+        bf.Serialize(file, data);
+        file.Close();
+
+        ShowStatus("Game Saved!", 2f);
     }
+
+    // ----------------------
+    // Loading
+    // ----------------------
 
     public void LoadGame()
     {
-        SaveData data = SaveSystem.LoadGame();
-
-        if (data != null)
+        if (File.Exists(savePath))
         {
-            // 1. Scene Management (if needed)
-            if (SceneManager.GetActiveScene().buildIndex != data.sceneIndex)
+            BinaryFormatter bf = new BinaryFormatter();
+            FileStream file = File.Open(savePath, FileMode.Open);
+            SaveData data = (SaveData)bf.Deserialize(file);
+            file.Close();
+
+            // Load the correct scene first
+            if (data.sceneIndex != SceneManager.GetActiveScene().buildIndex)
             {
-                // This is the cleanest way to handle scene load and data application
                 SceneManager.LoadScene(data.sceneIndex);
-                // Note: If you use SceneManager.LoadScene, you MUST use the 
-                // SceneManager.sceneLoaded event to call ApplyLoadedData(data).
-                // For now, we assume a single scene or persistent player objects.
+                // We postpone the actual loading until the scene is fully loaded
+                SceneManager.sceneLoaded += OnSceneLoaded;
+            }
+            else
+            {
+                ApplyLoadData(data);
             }
 
-            ApplyLoadedData(data);
-
+            ShowStatus("Game Loaded!", 2f);
         }
         else
         {
-            Debug.Log("No Save File Found. Cannot load game.");
+            ShowStatus("No save file found!", 2f);
         }
     }
 
-    private void ApplyLoadedData(SaveData data)
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // 2. Critical: Ensure all references are current after potential scene loads
-        FindReferences(); 
-        
-        // 3. Apply Player State
-        if (player != null)
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        if (File.Exists(savePath))
         {
-            Vector3 pos = new Vector3(data.playerPosition[0], data.playerPosition[1], data.playerPosition[2]);
-            Quaternion rot = new Quaternion(data.playerRotation[0], data.playerRotation[1], data.playerRotation[2], data.playerRotation[3]);
-            player.LoadState(pos, rot, data.cameraPitch);
+            BinaryFormatter bf = new BinaryFormatter();
+            FileStream file = File.Open(savePath, FileMode.Open);
+            SaveData data = (SaveData)bf.Deserialize(file);
+            file.Close();
+            ApplyLoadData(data);
         }
-        else
-        {
-            Debug.LogError("Load Failed: Player (FirstPersonController) reference is missing after FindReferences.");
-        }
-
-        // 4. Apply Inventory State
-        if (inventory != null)
-        {
-            inventory.LoadItems(data.inventoryItemNames);
-            Debug.Log($"Inventory Load Initiated with {data.inventoryItemNames.Count} items.");
-        }
-        else
-        {
-            Debug.LogError("Load Failed: InventorySystem reference is missing after FindReferences.");
-        }
-
-        Debug.Log("Game Load Attempt Complete.");
-        inventory.ShowFeedback("Game Loaded");
     }
 
-    private void FindReferences()
+    private void ApplyLoadData(SaveData data)
     {
-        // Only find if null, for performance
-        if (player == null) player = FindFirstObjectByType<FirstPersonController>();
-        if (inventory == null) inventory = FindFirstObjectByType<InventorySystem>();
+        // 1. Load Player Data
+        if (fpc != null)
+        {
+            fpc.transform.position = new Vector3(
+                data.playerPosition[0],
+                data.playerPosition[1],
+                data.playerPosition[2]
+            );
+            fpc.transform.rotation = new Quaternion(
+                data.playerRotation[0],
+                data.playerRotation[1],
+                data.playerRotation[2],
+                data.playerRotation[3]
+            );
+            // fpc.SetCameraPitch(data.cameraPitch); // You need to implement this setter in FPC
+        }
+
+        // 2. Load Inventory Data
+        if (inventorySystem != null)
+        {
+            // FIX: Using the new variable name: savedInventoryItems
+            inventorySystem.LoadItems(data.savedInventoryItems);
+        }
+    }
+
+    // Helper function to display messages
+    private void ShowStatus(string message, float duration)
+    {
+        if (statusText != null)
+        {
+            statusText.text = message;
+            CancelInvoke("HideStatus");
+            Invoke("HideStatus", duration);
+        }
+        else
+        {
+            Debug.Log(message);
+        }
+    }
+
+    private void HideStatus()
+    {
+        if (statusText != null)
+        {
+            statusText.text = "";
+        }
     }
 }

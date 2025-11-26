@@ -13,6 +13,7 @@ public class InventorySystem : MonoBehaviour
     public TextMeshProUGUI descriptionDisplay; 
     public TextMeshProUGUI feedbackText; 
     public GameObject discardButton; 
+    public GameObject useButton; 
 
     [Header("Settings")]
     public bool freezeTimeWhenOpen = false;
@@ -28,24 +29,37 @@ public class InventorySystem : MonoBehaviour
     private List<PickableItem> collectedItems = new List<PickableItem>();
     private List<InventorySlot> activeSlots = new List<InventorySlot>();
     private PickableItem markedItem = null; 
+    
+    [HideInInspector] public PickableItem itemToUse = null; 
 
     void Start()
     {
         if (inventoryUI != null) inventoryUI.SetActive(false);
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (feedbackText != null) feedbackText.text = "";
+        
+        // Ensure buttons are hidden on Start
         if (discardButton != null) discardButton.SetActive(false);
+        if (useButton != null) useButton.SetActive(false); 
+
+        // Add listener for the Use button
+        if (useButton != null)
+        {
+            Button useBtn = useButton.GetComponent<Button>();
+            if (useBtn != null) useBtn.onClick.AddListener(OnUseClicked);
+        }
+        
         if (playerCamera == null) playerCamera = Camera.main.transform;
     }
 
     public void ToggleInventory()
     {
-        isOpen = !isOpen;
-        if (isOpen) OpenInventory(); else CloseInventory();
+        if (isOpen) CloseInventory(); else OpenInventory();
     }
 
     void OpenInventory()
     {
+        isOpen = true; // --- FIX: Restored this line so FPC knows inventory is open ---
         inventoryUI.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -53,7 +67,9 @@ public class InventorySystem : MonoBehaviour
         
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (discardButton != null) discardButton.SetActive(false);
+        if (useButton != null) useButton.SetActive(false); // Hidden when inventory opens
         markedItem = null;
+        itemToUse = null; 
 
         RefreshUI();
     }
@@ -68,6 +84,7 @@ public class InventorySystem : MonoBehaviour
         markedItem = null;
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (discardButton != null) discardButton.SetActive(false);
+        if (useButton != null) useButton.SetActive(false);
 
         if (freezeTimeWhenOpen) Time.timeScale = 1f;
     }
@@ -80,7 +97,6 @@ public class InventorySystem : MonoBehaviour
             return false; 
         }
         
-        // If we pick up a flashlight while one is equipped, unequip the old one first.
         if (item is FlashlightItem && flashlightController != null && flashlightController.GetEquippedItem() != null)
         {
             flashlightController.Unequip();
@@ -98,7 +114,13 @@ public class InventorySystem : MonoBehaviour
     {
         if (markedItem == null) return;
 
-        // If the item being discarded is equipped, unequip it first
+        // Safeguard Logic
+        if (!markedItem.canBeDiscarded)
+        {
+            ShowFeedback($"Cannot discard {markedItem.itemName}. It is a key item.");
+            return; 
+        }
+
         if (markedItem is FlashlightItem && flashlightController != null && flashlightController.GetEquippedItem() == markedItem)
         {
             flashlightController.Unequip();
@@ -106,7 +128,6 @@ public class InventorySystem : MonoBehaviour
 
         collectedItems.Remove(markedItem);
         
-        // Spawn item back into the world
         markedItem.gameObject.SetActive(true);
         markedItem.transform.position = playerCamera.position + (playerCamera.forward * 1.5f);
         markedItem.transform.rotation = Quaternion.identity;
@@ -117,8 +138,7 @@ public class InventorySystem : MonoBehaviour
         if (col != null) col.enabled = true;
         if (rb != null)
         {
-            // CRITICAL: Ensure physics is re-enabled if it was kinematic (e.g., equipped flashlight)
-            rb.isKinematic = false;
+            rb.isKinematic = false; 
             rb.linearVelocity = Vector3.zero; 
             rb.AddForce(playerCamera.forward * throwForce, ForceMode.VelocityChange);
         }
@@ -126,6 +146,7 @@ public class InventorySystem : MonoBehaviour
         markedItem = null;
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (discardButton != null) discardButton.SetActive(false);
+        if (useButton != null) useButton.SetActive(false); // Hidden after discard
         
         RefreshUI();
     }
@@ -156,12 +177,54 @@ public class InventorySystem : MonoBehaviour
     {
         markedItem = item;
         if (descriptionDisplay != null) descriptionDisplay.text = item.itemDescription;
-        if (discardButton != null) discardButton.SetActive(true);
+        
+        // Button Visibility Logic
+        if (discardButton != null)
+        {
+            if (item.canBeDiscarded)
+            {
+                discardButton.SetActive(true);
+            }
+            else
+            {
+                discardButton.SetActive(false);
+            }
+        }
+        
+        if (useButton != null)
+        {
+            useButton.SetActive(item.isStorable); 
+        }
 
         foreach (InventorySlot slot in activeSlots)
         {
             slot.SetSelected(slot == clickedSlot);
         }
+    }
+    
+    public void OnUseClicked()
+    {
+        if (markedItem != null)
+        {
+            itemToUse = markedItem; 
+            CloseInventory(); 
+            ShowFeedback($"Ready to use: {itemToUse.itemName}. Now look at an object and press [Interact]!");
+        }
+    }
+    
+    public void ConsumeItem(PickableItem item)
+    {
+        if (collectedItems.Contains(item))
+        {
+            collectedItems.Remove(item);
+            if (item.gameObject != null)
+            {
+                Destroy(item.gameObject);
+            }
+        }
+        itemToUse = null; 
+        markedItem = null;
+        RefreshUI(); 
     }
 
     public void ShowFeedback(string message)
@@ -184,15 +247,12 @@ public class InventorySystem : MonoBehaviour
         if (feedbackText != null) feedbackText.text = "";
     }
     
-    // --- Flashlight Finder ---
     public FlashlightItem FindFlashlight()
     {
-        // Try to find an unequipped flashlight in the inventory list
         foreach (var item in collectedItems)
         {
             if (item is FlashlightItem flashlight)
             {
-                // Ensure it's not the one currently equipped by the controller (if controller exists)
                 if (flashlightController == null || flashlightController.GetEquippedItem() != flashlight)
                 {
                     return flashlight;
@@ -202,23 +262,28 @@ public class InventorySystem : MonoBehaviour
         return null;
     }
 
-    // --- SAVE / LOAD HELPERS ---
-
-    public List<string> GetItemNames()
+    // --- MODIFIED: Return structured item data for saving (replaces GetItemNames) ---
+    public List<SaveData.SavedInventoryItem> GetSavedItemsData()
     {
-        List<string> names = new List<string>();
+        List<SaveData.SavedInventoryItem> savedItems = new List<SaveData.SavedInventoryItem>();
         foreach (var item in collectedItems)
         {
-            names.Add(item.itemName);
+            // Create a new structured object containing the name, ID, and discard status
+            savedItems.Add(new SaveData.SavedInventoryItem(
+                item.itemName, 
+                item.itemId, 
+                item.canBeDiscarded
+            ));
         }
-        return names;
+        return savedItems;
     }
+    // --------------------------------------------------------------------------------
 
-    public void LoadItems(List<string> itemNames)
+    // --- MODIFIED: Load items using structured data and apply properties (replaces LoadItems(List<string>)) ---
+    public void LoadItems(List<SaveData.SavedInventoryItem> savedItemData)
     {
-        Debug.Log($"[INVENTORY LOAD START] Attempting to load {itemNames.Count} items.");
+        Debug.Log($"[INVENTORY LOAD START] Attempting to load {savedItemData.Count} items.");
         
-        // 1. Clean up existing instantiated items 
         if (flashlightController != null)
         {
             flashlightController.Unequip();
@@ -232,47 +297,45 @@ public class InventorySystem : MonoBehaviour
             }
         }
         collectedItems.Clear();
-        Debug.Log("[INVENTORY LOAD] Old items destroyed and list cleared.");
 
-
-        // 2. Reset UI State
         markedItem = null;
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (discardButton != null) discardButton.SetActive(false);
+        if (useButton != null) useButton.SetActive(false); 
 
-        // 3. Rebuild list from names by loading prefabs from Resources
-        foreach (string name in itemNames)
+        foreach (SaveData.SavedInventoryItem savedItem in savedItemData)
         {
-            Debug.Log($"[INVENTORY LOAD] Attempting to load item: {name}");
-            string path = $"Items/{name}";
+            string path = $"Items/{savedItem.itemName}";
             GameObject itemPrefab = Resources.Load<GameObject>(path);
             
             if (itemPrefab != null)
             {
-                Debug.Log($"[INVENTORY LOAD] Prefab FOUND for {name}. Instantiating...");
                 GameObject itemObj = Instantiate(itemPrefab);
                 
                 itemObj.transform.SetParent(null);
                 itemObj.transform.position = Vector3.zero;
                 itemObj.transform.rotation = Quaternion.identity;
-                itemObj.name = $"INVENTORY_ITEM_HIDDEN_{name}";
+                itemObj.name = $"INVENTORY_ITEM_HIDDEN_{savedItem.itemName}";
                 
                 itemObj.SetActive(false); 
                 PickableItem pickable = itemObj.GetComponent<PickableItem>();
                 
                 if (pickable != null)
                 {
+                    // Apply saved properties (ID and discardability)
+                    pickable.itemId = savedItem.itemId;
+                    pickable.canBeDiscarded = savedItem.canBeDiscarded;
+
                     if (pickable is FlashlightItem flashlight)
                     {
                         flashlight.ToggleLight(false);
                     }
                     
                     collectedItems.Add(pickable);
-                    Debug.Log($"[INVENTORY LOAD] Item successfully instantiated and added to list. Total items: {collectedItems.Count}");
                 }
                 else
                 {
-                    Debug.LogError($"Inventory Load Error: Instantiated item '{name}' is missing PickableItem component! Item destroyed.");
+                    Debug.LogError($"Inventory Load Error: Instantiated item '{savedItem.itemName}' is missing PickableItem component! Item destroyed.");
                     Destroy(itemObj); 
                 }
             }
@@ -282,7 +345,6 @@ public class InventorySystem : MonoBehaviour
             }
         }
 
-        Debug.Log($"[INVENTORY LOAD END] Final collected items count: {collectedItems.Count}");
         if (isOpen) RefreshUI();
     }
 }

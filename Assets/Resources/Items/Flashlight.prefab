@@ -155,12 +155,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 15964ef207fd07143adf4fe728328f36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FlashlightItem
+  itemId: 3
   itemName: Flashlight
   itemDescription: A simple flashlight that does flashlight things when turned on.
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: afd4156ff8aa97244961a16bc342645a, type: 3}
   isStorable: 1
   lightSource: {fileID: 1179568383889018108}
-  flashlightMesh: {fileID: 8811943201573003871}
+  flashlightMesh: {fileID: 366495576243912765}
 --- !u!1 &8811943201573003871
 GameObject:
   m_ObjectHideFlags: 0

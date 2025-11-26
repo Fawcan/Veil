@@ -11,7 +11,8 @@ public class FirstPersonController : MonoBehaviour
 
     [Header("Camera Look")]
     public Transform cameraTransform;
-    public float lookSensitivity = 0.1f;
+    [Tooltip("User-facing sensitivity scale (1-20). Internally scaled down for smooth movement.")]
+    public float sensitivityScale = 10.0f; // Default value for 1-20 scale
     public bool isYInverted = false; 
 
     [Header("Crouching")]
@@ -45,6 +46,8 @@ public class FirstPersonController : MonoBehaviour
     public Texture2D useCrosshair; 
     [Tooltip("Shows when holding an item or door (e.g., Closed Hand icon)")]
     public Texture2D interactCrosshair; 
+    [Tooltip("Shows when an item is selected from inventory and ready to be used on a target.")]
+    public Texture2D useItemCrosshair; 
 
     private float standingHeight;
     private Vector3 standingCenter;
@@ -111,8 +114,14 @@ public class FirstPersonController : MonoBehaviour
         if (PauseMenu.GameIsPaused) return;
         if (inventory != null && inventory.isOpen) return;
 
-        float mouseX = lookInput.x * lookSensitivity;
-        float mouseY = lookInput.y * lookSensitivity;
+        // --- UPDATED SENSITIVITY SCALING LOGIC (Reverted to 100f) ---
+        // Converts the user's 1-20 setting into the game's required 0.01-0.2 multiplier (using 100f divisor).
+        float effectiveSensitivity = sensitivityScale / 100f; 
+        
+        float mouseX = lookInput.x * effectiveSensitivity;
+        float mouseY = lookInput.y * effectiveSensitivity;
+        // --- END SENSITIVITY SCALING LOGIC ---
+        
         if (isYInverted) mouseY = -mouseY;
 
         if (heldDoor != null) {
@@ -136,12 +145,29 @@ public class FirstPersonController : MonoBehaviour
         currentHoverState = HoverState.None;
         
         if (currentlyHeldItem != null || heldDoor != null) return;
-
+        
         Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, interactionRange))
         {
+            // 1. Check if we are in item-use mode and hovering over a valid target.
+            if (inventory != null && inventory.itemToUse != null)
+            {
+                // We assume InteractableDoor is a valid target for item use
+                if (hit.collider.GetComponentInParent<InteractableDoor>() != null)
+                {
+                    // Set to Use state to signal a valid target is found
+                    currentHoverState = HoverState.Use;
+                    // Skip the rest of the checks
+                    return; 
+                }
+                // If we are in item-use mode but hit an invalid target, state remains None, and we exit.
+                return;
+            }
+            
+            // 2. Standard Interaction Checks (only run if not in item use mode)
+            
             if (hit.collider.GetComponent<PickableItem>() != null ||
                 hit.collider.GetComponentInParent<InteractableDoor>() != null)
             {
@@ -155,6 +181,8 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
         }
+        
+        // If the raycast missed, state remains None (Default crosshair)
     }
 
     void OnGUI()
@@ -162,17 +190,32 @@ public class FirstPersonController : MonoBehaviour
         if (Cursor.lockState != CursorLockMode.Locked || PauseMenu.GameIsPaused) return;
 
         Texture2D textureToDraw = defaultCrosshair;
+        
+        bool isInItemUseMode = inventory != null && inventory.itemToUse != null;
 
-        if (heldDoor != null || currentlyHeldItem != null)
+        // Priority 1: Item Use Mode Check
+        if (isInItemUseMode)
         {
+            // Only draw the useItemCrosshair if we are in item use mode AND currently hovering over a valid target (HoverState.Use)
+            if (currentHoverState == HoverState.Use)
+            {
+                textureToDraw = useItemCrosshair; 
+            }
+            // If currentHoverState is None, we fall through and use the default crosshair.
+        }
+        else if (heldDoor != null || currentlyHeldItem != null)
+        {
+            // Priority 2: Use the held/interacting crosshair
             textureToDraw = interactCrosshair;
         }
         else if (currentHoverState == HoverState.Open)
         {
+            // Priority 3: Hovering over standard interactable
             textureToDraw = hoverCrosshair; 
         }
         else if (currentHoverState == HoverState.Use)
         {
+            // Priority 4: Hovering over 'Use' item (like a save point) outside of item-use mode
             textureToDraw = useCrosshair; 
         }
 
@@ -187,7 +230,7 @@ public class FirstPersonController : MonoBehaviour
     private void UpdateCrouchState() { if(crouchPressed && isGrounded){isCrouching=true;}else if(!crouchPressed && isCrouching){Vector3 rO=transform.position+controller.center+(Vector3.up*(controller.height/2)*0.9f);float rD=(standingHeight-controller.height)+0.1f;if(!Physics.Raycast(rO,Vector3.up,rD,obstacleMask)){isCrouching=false;}}}
     private void ApplyCrouch() { float tH=isCrouching?standingHeight*crouchHeightMultiplier:standingHeight;Vector3 tC=isCrouching?standingCenter*crouchHeightMultiplier:standingCenter;float tCY=isCrouching?standingCameraY*crouchHeightMultiplier:standingCameraY;controller.height=Mathf.Lerp(controller.height,tH,crouchLerpSpeed*Time.deltaTime);controller.center=Vector3.Lerp(controller.center,tC,crouchLerpSpeed*Time.deltaTime);Vector3 cP=cameraTransform.localPosition;cP.y=Mathf.Lerp(cP.y,tCY,crouchLerpSpeed*Time.deltaTime);cameraTransform.localPosition=cP;}
     private void DropItem() { if(currentlyHeldItem!=null){currentlyHeldItem.Drop(cameraTransform, dropForce);currentlyHeldItem=null;}}
-    public void SetLookSensitivity(float sensitivity) { lookSensitivity = sensitivity; }
+    public void SetLookSensitivity(float sensitivity) { sensitivityScale = Mathf.Clamp(sensitivity, 1f, 20f); }
     public void SetInvertY(bool inverted) { isYInverted = inverted; }
     public float GetCameraPitch() { return xRotation; }
     
@@ -207,10 +250,50 @@ public class FirstPersonController : MonoBehaviour
             if (PauseMenu.GameIsPaused) return;
             if (inventory != null && inventory.isOpen) return;
 
-            if (currentlyHeldItem != null) { DropItem(); return; }
-            
+            PickableItem stagedItem = inventory != null ? inventory.itemToUse : null;
+
             Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
             RaycastHit hit;
+
+            // --- ITEM USE MODE (Priority 1) ---
+            if (stagedItem != null)
+            {
+                bool interactionSuccessful = false;
+                
+                if (Physics.Raycast(ray, out hit, interactionRange))
+                {
+                    InteractableDoor door = hit.collider.GetComponentInParent<InteractableDoor>();
+                    // Check if the item can be used on the door
+                    if (door != null && door.TryUseItem(stagedItem)) 
+                    {
+                        inventory.ShowFeedback($"Used {stagedItem.itemName}. Door Unlocked!");
+                        interactionSuccessful = true;
+                    }
+                    // Add checks for other usable objects here (e.g., SavePoint, Chests, etc.)
+                }
+
+                if (interactionSuccessful)
+                {
+                    // If successful, consume the item from inventory
+                    inventory.ConsumeItem(stagedItem);
+                }
+                else
+                {
+                    // If unsuccessful or nothing was hit, clear the mode and notify
+                    inventory.itemToUse = null; 
+                    inventory.ShowFeedback($"Cannot use {stagedItem.itemName} here.");
+                }
+                
+                // Exit immediately, regardless of success/failure in item use mode
+                return;
+            }
+            // --- END ITEM USE MODE ---
+
+
+            // --- STANDARD INTERACTION (Priority 2) ---
+
+            if (currentlyHeldItem != null) { DropItem(); return; }
+            
             if (Physics.Raycast(ray, out hit, interactionRange)) {
                 PickableItem item = hit.collider.GetComponent<PickableItem>();
                 if (item != null) { 
@@ -235,7 +318,6 @@ public class FirstPersonController : MonoBehaviour
     { 
         if (context.performed && inventory != null)
         {
-            // NEW: Prevent inventory from opening if the Pause Menu is active
             if (PauseMenu.GameIsPaused) return; 
 
             inventory.ToggleInventory(); 
@@ -246,7 +328,6 @@ public class FirstPersonController : MonoBehaviour
     {
         if (context.performed)
         {
-            // Existing logic: If inventory is open, close it and DO NOT open pause menu (due to return)
             if (inventory != null && inventory.isOpen) { inventory.ToggleInventory(); return; }
             
             if (pauseMenu != null) { pauseMenu.TogglePause(); }

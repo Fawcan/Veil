@@ -1,52 +1,47 @@
 using UnityEngine;
-using TMPro;
 using UnityEngine.UI;
 
+// NOTE: This component should be attached to the Inventory Slot UI Prefab.
 public class InventorySlot : MonoBehaviour
 {
     [Header("UI References")]
-    public TextMeshProUGUI nameText;
-    public TextMeshProUGUI descriptionText;
     public Image iconImage;
-    
-    [Header("Selection Visuals")]
-    public Button slotButton; // The Button component on this slot
-    public Image backgroundToHighlight; // The image to color (usually the slot background)
-    public Color defaultColor = Color.white;
-    public Color selectedColor = Color.yellow; // Color when marked
+    public Image selectionHighlight;
+    public Button slotButton;
 
-    private PickableItem myItem;
+    private PickableItem currentItem;
 
-    // We store the data here
+    // --- NEW: Ensure the highlight is off on Start ---
+    void Start()
+    {
+        if (selectionHighlight != null)
+        {
+            selectionHighlight.enabled = false;
+        }
+    }
+    // --- END NEW ---
+
     public void SetItem(PickableItem item)
     {
-        myItem = item;
+        currentItem = item;
 
-        if (nameText != null) nameText.text = item.itemName;
-        if (descriptionText != null) descriptionText.text = item.itemDescription;
-
-        if (iconImage != null)
+        if (iconImage != null && item != null && item.icon != null)
         {
-            if (item.icon != null)
-            {
-                iconImage.sprite = item.icon;
-                iconImage.enabled = true;
-            }
-            else
-            {
-                iconImage.enabled = false;
-            }
+            iconImage.sprite = item.icon;
+            iconImage.enabled = true;
         }
-        
-        // Reset visual state
-        SetSelected(false);
+        else
+        {
+            iconImage.enabled = false;
+        }
     }
 
     public void SetSelected(bool isSelected)
     {
-        if (backgroundToHighlight != null)
+        if (selectionHighlight != null)
         {
-            backgroundToHighlight.color = isSelected ? selectedColor : defaultColor;
+            // This line controls whether the highlight image is visible.
+            selectionHighlight.enabled = isSelected;
         }
     }
 }

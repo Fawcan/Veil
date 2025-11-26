@@ -2,74 +2,106 @@ using UnityEngine;
 
 public class InteractableDoor : MonoBehaviour
 {
-    [Header("Door Settings")]
-    [Tooltip("The axis the door will rotate around in its local space.")]
-    public Vector3 rotationAxis = Vector3.up;
-    [Tooltip("The maximum angle (in degrees) the door can open.")]
-    public float maxAngle = 120.0f;
-    [Tooltip("The minimum angle (in degrees) the door can be.")]
-    public float minAngle = 0.0f;
-    [Tooltip("How sensitive the door is to mouse movement.")]
-    public float sensitivity = 0.1f; // Reduced sensitivity for X-axis
+    [Header("Door State")]
+    public bool isLocked = false;
+    
+    [Header("Key Linkage (ID is used for logic)")]
+    [Tooltip("The unique ID that the required key must match.")]
+    public int requiredKeyId = 101; // Example ID
+    [Tooltip("The item name is only used for UI feedback, not logic.")]
+    public string requiredKeyName = "Old Key"; 
+    
+    [Header("Movement")]
+    public float openAngle = 125f; 
+    public float interactionSpeed = 0.5f; 
 
-    [Header("Physics (Optional)")]
-    [Tooltip("If set, the door will be kinematic when held and non-kinematic when released.")]
-    public Rigidbody doorRigidbody;
+    // Rotation/Physics members
+    private Quaternion startRotation;
+    private Quaternion openRotation;
+    private Transform pivot;
+    private bool isInteracting = false;
+    private float targetRotationY;
     
-    private bool isBeingHeld = false;
-    private float currentAngle = 0.0f;
-    private Quaternion initialRotation;
-    
+    private InventorySystem inventorySystem; 
+
     void Start()
     {
-        initialRotation = transform.localRotation;
+        pivot = transform; 
         
-        if (doorRigidbody == null)
+        startRotation = pivot.localRotation;
+        openRotation = startRotation * Quaternion.Euler(0, openAngle, 0);
+        targetRotationY = 0f; 
+        
+        inventorySystem = FindFirstObjectByType<InventorySystem>();
+        
+        if (requiredKeyId == 0)
         {
-            doorRigidbody = GetComponent<Rigidbody>();
-        }
-
-        currentAngle = minAngle;
-        transform.localRotation = initialRotation * Quaternion.Euler(rotationAxis * currentAngle);
-    }
-
-    public void StartInteract()
-    {
-        isBeingHeld = true;
-        if (doorRigidbody != null)
-        {
-            doorRigidbody.isKinematic = true;
-        }
-    }
-
-    public void StopInteract()
-    {
-        isBeingHeld = false;
-        if (doorRigidbody != null)
-        {
-            doorRigidbody.isKinematic = false;
+             Debug.LogError($"Door on object {gameObject.name} has requiredKeyId set to 0! Please set a unique ID in the Inspector.");
         }
     }
 
     /// <summary>
-    /// Called by the PlayerController's Update loop every frame while held.
-    /// --- MODIFIED to use mouseInputX ---
+    /// Attempts to use an item from the inventory on this door (e.g., a key).
     /// </summary>
-    /// <param name="mouseInputX">The raw horizontal mouse delta.</param>
-    public void UpdateInteraction(float mouseInputX)
+    public bool TryUseItem(PickableItem item)
     {
-        if (!isBeingHeld) return;
-
-        // Moving mouse "right" (positive X) opens the door (positive angle)
-        float rotationAmount = mouseInputX * sensitivity; 
+        if (isLocked)
+        {
+            // --- NEW LOGIC: CHECK ITEM ID ---
+            if (item.itemId == requiredKeyId)
+            {
+                isLocked = false; 
+                
+                if (inventorySystem != null) 
+                    inventorySystem.ShowFeedback($"Used {item.itemName}. Door Unlocked! Drag to open.");
+                Debug.Log($"Door unlocked successfully using Key ID {item.itemId}.");
+                
+                return true; // Item consumed
+            }
+            // --- END NEW LOGIC ---
+            else
+            {
+                // Feedback uses the human-readable requiredKeyName
+                if (inventorySystem != null) 
+                    inventorySystem.ShowFeedback($"Wrong Key. This door requires the key named: {requiredKeyName}.");
+                return false; // Wrong item, do not consume
+            }
+        }
         
-        // Add to the current angle
-        currentAngle += rotationAmount;
+        if (inventorySystem != null) inventorySystem.ShowFeedback("The door is already unlocked.");
+        return false;
+    }
+    
+    public void StartInteract()
+    {
+        if (isLocked)
+        {
+            if (inventorySystem != null) inventorySystem.ShowFeedback("It's locked. A key is needed.");
+            Debug.Log("Door is locked.");
+            return;
+        }
+        
+        isInteracting = true;
+    }
+    
+    public void UpdateInteraction(float xInput)
+    {
+        if (!isInteracting || isLocked) return; 
 
-        // Clamp the angle between min and max
-        currentAngle = Mathf.Clamp(currentAngle, minAngle, maxAngle);
-
-        // Apply the rotation
-        transform.localRotation = initialRotation * Quaternion.Euler(rotationAxis * currentAngle);
+        targetRotationY += xInput * interactionSpeed * Time.deltaTime * 1f; 
+        targetRotationY = Mathf.Clamp(targetRotationY, 0f, 1f); 
+        
+        Quaternion targetRot = Quaternion.Lerp(startRotation, openRotation, targetRotationY);
+        pivot.localRotation = targetRot;
+    }
+    
+    public void StopInteract()
+    {
+        isInteracting = false;
+    }
+    
+    void Update()
+    {
+        // Penumbra-style doors: no snapping logic here.
     }
 }

@@ -1,54 +1,81 @@
 using UnityEngine;
 
+// Ensure this script is on all pickable items, including your keys.
 public class PickableItem : MonoBehaviour
 {
-    [Header("Item Data")]
-    public string itemName = "Item";
-    [TextArea(3, 5)] // Allows for multi-line text in Inspector
-    public string itemDescription = "Description here...";
+    [Header("Item Identification")]
+    [Tooltip("Unique ID used for linking keys to doors/containers.")]
+    public int itemId = 0; 
+    public string itemName = "Default Item"; 
+    
+    [TextArea(3, 5)]
+    public string itemDescription = "A generic item.";
+    
+    [Header("Inventory UI")]
     public Sprite icon; 
+    
+    [Header("Behavior")]
+    [Tooltip("If true, item is added to inventory. If false, it's held and droppable.")]
     public bool isStorable = true; 
-
+    
+    // --- NEW CHECKBOX ---
+    [Tooltip("If checked, the item can be removed (discarded) from the inventory.")]
+    public bool canBeDiscarded = true; 
+    // --------------------
+    
+    private bool isHeld = false;
     private Rigidbody rb;
     private Collider col;
-    private bool isPickedUp = false;
 
-    // FIX: Changed to protected so subclasses can call base.Start()
-    protected void Start()
+    protected virtual void Start()
     {
         rb = GetComponent<Rigidbody>();
         col = GetComponent<Collider>();
         
-        if (!isStorable && (rb == null || col == null))
+        if (itemId == 0 && isStorable)
         {
-            Debug.LogError("Physics PickableItem needs Rigidbody and Collider!", this);
+            Debug.LogWarning($"Item '{itemName}' is storable but has ID 0. Make sure you set a unique ID!");
         }
     }
 
-    public void PickUp(Transform parent)
+    public void PickUp(Transform holder)
     {
-        if (isPickedUp) return;
-        isPickedUp = true;
-        
-        if (rb != null) rb.isKinematic = true;
-        if (col != null) col.enabled = false;
+        if (isHeld) return;
+        isHeld = true;
 
-        transform.SetParent(parent);
-        transform.localPosition = new Vector3(0.5f, -0.5f, 1.5f);
-        transform.localRotation = Quaternion.identity; 
+        transform.SetParent(holder);
+        transform.localPosition = new Vector3(0, 0, 0.5f);
+        transform.localRotation = Quaternion.identity;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+        }
+        if (col != null)
+        {
+            col.enabled = false;
+        }
     }
 
-    public void Drop(Transform playerCam, float force)
+    public void Drop(Transform cameraTransform, float force)
     {
-        if (!isPickedUp) return;
-        isPickedUp = false;
-        
-        transform.SetParent(null); 
-        if (col != null) col.enabled = true;
+        isHeld = false;
+        transform.SetParent(null);
+
         if (rb != null)
         {
             rb.isKinematic = false;
-            rb.AddForce(playerCam.forward * force, ForceMode.VelocityChange);
+            rb.linearVelocity = Vector3.zero;
+            rb.AddForce(cameraTransform.forward * force, ForceMode.VelocityChange);
         }
+        if (col != null)
+        {
+            col.enabled = true;
+        }
+    }
+
+    public bool IsHeld()
+    {
+        return isHeld;
     }
 }
