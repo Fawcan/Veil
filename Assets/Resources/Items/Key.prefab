@@ -159,6 +159,8 @@ MonoBehaviour:
   itemDescription: A key that does key things
   icon: {fileID: 21300000, guid: 2a3a504b50e868244b18153dcec1198e, type: 3}
   isStorable: 1
+  canBeUsedFromInventory: 1
+  canBeDiscarded: 0
 --- !u!1 &3773008524344105427
 GameObject:
   m_ObjectHideFlags: 0

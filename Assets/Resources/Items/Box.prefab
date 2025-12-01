@@ -157,4 +157,5 @@ MonoBehaviour:
   itemDescription: Just a box
   icon: {fileID: 21300000, guid: 2a2e80c8ee6bebe4baa19d204aa32473, type: 3}
   isStorable: 1
+  canBeUsedFromInventory: 1
   canBeDiscarded: 1

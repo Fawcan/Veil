@@ -18,10 +18,13 @@ public class PickableItem : MonoBehaviour
     [Tooltip("If true, item is added to inventory. If false, it's held and droppable.")]
     public bool isStorable = true; 
     
-    // --- NEW CHECKBOX ---
+    // --- NEW PROPERTY FOR IN-INVENTORY USAGE ---
+    [Tooltip("If checked, the 'Use' button appears and double-click works. Used for keys or immediate consumables.")]
+    public bool canBeUsedFromInventory = false; 
+    // ------------------------------------------
+    
     [Tooltip("If checked, the item can be removed (discarded) from the inventory.")]
     public bool canBeDiscarded = true; 
-    // --------------------
     
     private bool isHeld = false;
     private Rigidbody rb;
@@ -36,6 +39,18 @@ public class PickableItem : MonoBehaviour
         {
             Debug.LogWarning($"Item '{itemName}' is storable but has ID 0. Make sure you set a unique ID!");
         }
+    }
+    
+    /// <summary>
+    /// Called when the item is used directly from the inventory (e.g., double-click or use button).
+    /// Subclasses should override this if they are consumables.
+    /// </summary>
+    /// <param name="inventory">Reference to the InventorySystem.</param>
+    /// <returns>True if the item was successfully consumed or used up, false otherwise.</returns>
+    public virtual bool OnUse(InventorySystem inventory)
+    {
+        // Default behavior: item is not consumed/used immediately (e.g., it's a key or needs raycast)
+        return false;
     }
 
     public void PickUp(Transform holder)

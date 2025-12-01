@@ -25,11 +25,17 @@ public class FirstPersonController : MonoBehaviour
     
     [Header("Interaction")]
     public float interactionRange = 2f; 
-    public float dropForce = 5f;
+    public float dropForce = 2f;
     [Tooltip("Multiplier for movement speed while interacting with an object.")]
     public float interactSpeedMultiplier = 0.75f; 
     [Tooltip("How far the player can move from a door before it's auto-released.")]
     public float interactionBreakDistance = 3f; 
+    
+    [Header("Holding Physics")] 
+    [Tooltip("Distance in front of the camera to hold the item.")]
+    public float holdDistance = 1.5f; 
+    [Tooltip("Force applied to move the item towards the hold position.")]
+    public float holdForce = 500f; 
 
     [Header("UI & Systems")]
     public PauseMenu pauseMenu; 
@@ -41,13 +47,15 @@ public class FirstPersonController : MonoBehaviour
     [Tooltip("Standard crosshair (e.g., a dot)")]
     public Texture2D defaultCrosshair; 
     [Tooltip("Shows when hovering items or doors (e.g., Open Hand icon)")]
-    public Texture2D hoverCrosshair;   
+    public Texture2D hoverCrosshair;   
     [Tooltip("Shows when hovering usable objects like Save Points (e.g., Gear or Eye icon)")]
     public Texture2D useCrosshair; 
     [Tooltip("Shows when holding an item or door (e.g., Closed Hand icon)")]
     public Texture2D interactCrosshair; 
     [Tooltip("Shows when an item is selected from inventory and ready to be used on a target.")]
     public Texture2D useItemCrosshair; 
+    [Tooltip("Custom cursor texture used when inventory or pause menu is open.")]
+    public Texture2D inventoryCursor; 
 
     private float standingHeight;
     private Vector3 standingCenter;
@@ -77,7 +85,7 @@ public class FirstPersonController : MonoBehaviour
         standingCenter = controller.center;
         standingCameraY = cameraTransform.localPosition.y;
         Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        Cursor.visible = false; // Initial hide
         
         if (controller != null) controller.enabled = true;
     }
@@ -111,16 +119,18 @@ public class FirstPersonController : MonoBehaviour
         playerVelocity.y += gravity * Time.deltaTime;
         controller.Move(playerVelocity * Time.deltaTime);
 
+        // --- Skip look and interaction check if paused or inventory is open ---
         if (PauseMenu.GameIsPaused) return;
         if (inventory != null && inventory.isOpen) return;
 
-        // --- UPDATED SENSITIVITY SCALING LOGIC (Reverted to 100f) ---
-        // Converts the user's 1-20 setting into the game's required 0.01-0.2 multiplier (using 100f divisor).
+        // --- Physics Holding Update ---
+        UpdateHeldItemPhysics();
+
+        // --- Sensitivity Scaling ---
         float effectiveSensitivity = sensitivityScale / 100f; 
         
         float mouseX = lookInput.x * effectiveSensitivity;
         float mouseY = lookInput.y * effectiveSensitivity;
-        // --- END SENSITIVITY SCALING LOGIC ---
         
         if (isYInverted) mouseY = -mouseY;
 
@@ -139,6 +149,30 @@ public class FirstPersonController : MonoBehaviour
 
         CheckInteractable();
     }
+    
+    void UpdateHeldItemPhysics()
+    {
+        if (currentlyHeldItem == null) return;
+
+        Rigidbody itemRb = currentlyHeldItem.GetComponent<Rigidbody>();
+        if (itemRb == null) return;
+
+        Vector3 targetPosition = cameraTransform.position + cameraTransform.forward * holdDistance;
+        Vector3 displacement = targetPosition - currentlyHeldItem.transform.position;
+        
+        if (displacement.magnitude > interactionBreakDistance) 
+        {
+            DropItem();
+            if(inventory != null) inventory.ShowFeedback("Held item dropped due to excessive distance.");
+            return;
+        }
+
+        // Apply force to move item
+        itemRb.AddForce(displacement * holdForce, ForceMode.Acceleration);
+        
+        Quaternion targetRotation = cameraTransform.rotation;
+        currentlyHeldItem.transform.rotation = Quaternion.Slerp(currentlyHeldItem.transform.rotation, targetRotation, Time.deltaTime * 10f);
+    }
 
     void CheckInteractable()
     {
@@ -151,22 +185,15 @@ public class FirstPersonController : MonoBehaviour
 
         if (Physics.Raycast(ray, out hit, interactionRange))
         {
-            // 1. Check if we are in item-use mode and hovering over a valid target.
             if (inventory != null && inventory.itemToUse != null)
             {
-                // We assume InteractableDoor is a valid target for item use
                 if (hit.collider.GetComponentInParent<InteractableDoor>() != null)
                 {
-                    // Set to Use state to signal a valid target is found
                     currentHoverState = HoverState.Use;
-                    // Skip the rest of the checks
                     return; 
                 }
-                // If we are in item-use mode but hit an invalid target, state remains None, and we exit.
                 return;
             }
-            
-            // 2. Standard Interaction Checks (only run if not in item use mode)
             
             if (hit.collider.GetComponent<PickableItem>() != null ||
                 hit.collider.GetComponentInParent<InteractableDoor>() != null)
@@ -181,41 +208,78 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
         }
-        
-        // If the raycast missed, state remains None (Default crosshair)
     }
 
     void OnGUI()
     {
-        if (Cursor.lockState != CursorLockMode.Locked || PauseMenu.GameIsPaused) return;
+        bool isCursorUnlocked = Cursor.lockState != CursorLockMode.Locked;
+
+        // --- MODE 1: UNLOCKED (Menu/Inventory) ---
+        if (isCursorUnlocked)
+        {
+            // We are in a menu, so we manage the custom cursor here.
+            if (inventoryCursor != null)
+            {
+                // Hide the default system cursor and draw our custom texture.
+                Cursor.visible = false; 
+
+                // Get mouse position (Y is inverted in OnGUI space)
+                // Use the new Input System to get the mouse position, with a fallback to the legacy API
+                Vector2 mousePos = Mouse.current != null 
+                    ? Mouse.current.position.ReadValue() 
+                    : new Vector2(Input.mousePosition.x, Input.mousePosition.y);
+                
+                // Draw the custom cursor centered at the mouse position
+                float cursorSize = crosshairSize; // Reuse crosshair size for the custom cursor
+                Rect position = new Rect(
+                    mousePos.x - (cursorSize / 2), 
+                    Screen.height - mousePos.y - (cursorSize / 2), 
+                    cursorSize, 
+                    cursorSize
+                );
+                
+                GUI.DrawTexture(position, inventoryCursor);
+            }
+            else
+            {
+                // If no custom texture is assigned, fall back to the system cursor.
+                Cursor.visible = true;
+            }
+            
+            // Do not proceed to draw the gameplay crosshair
+            return;
+        } 
+        
+        // --- MODE 2: LOCKED (Gameplay) ---
+        // If we reach here, Cursor.lockState is Locked. Draw the gameplay crosshair.
+        
+        if (PauseMenu.GameIsPaused) return; // Should already be covered by the lockState check, but safe guard.
+        if (inventory != null && inventory.isOpen) return; // Should also be covered.
+
+        // Ensure system cursor is hidden during gameplay
+        Cursor.visible = false; 
 
         Texture2D textureToDraw = defaultCrosshair;
         
         bool isInItemUseMode = inventory != null && inventory.itemToUse != null;
 
-        // Priority 1: Item Use Mode Check
         if (isInItemUseMode)
         {
-            // Only draw the useItemCrosshair if we are in item use mode AND currently hovering over a valid target (HoverState.Use)
             if (currentHoverState == HoverState.Use)
             {
                 textureToDraw = useItemCrosshair; 
             }
-            // If currentHoverState is None, we fall through and use the default crosshair.
         }
         else if (heldDoor != null || currentlyHeldItem != null)
         {
-            // Priority 2: Use the held/interacting crosshair
             textureToDraw = interactCrosshair;
         }
         else if (currentHoverState == HoverState.Open)
         {
-            // Priority 3: Hovering over standard interactable
             textureToDraw = hoverCrosshair; 
         }
         else if (currentHoverState == HoverState.Use)
         {
-            // Priority 4: Hovering over 'Use' item (like a save point) outside of item-use mode
             textureToDraw = useCrosshair; 
         }
 
@@ -229,7 +293,37 @@ public class FirstPersonController : MonoBehaviour
     
     private void UpdateCrouchState() { if(crouchPressed && isGrounded){isCrouching=true;}else if(!crouchPressed && isCrouching){Vector3 rO=transform.position+controller.center+(Vector3.up*(controller.height/2)*0.9f);float rD=(standingHeight-controller.height)+0.1f;if(!Physics.Raycast(rO,Vector3.up,rD,obstacleMask)){isCrouching=false;}}}
     private void ApplyCrouch() { float tH=isCrouching?standingHeight*crouchHeightMultiplier:standingHeight;Vector3 tC=isCrouching?standingCenter*crouchHeightMultiplier:standingCenter;float tCY=isCrouching?standingCameraY*crouchHeightMultiplier:standingCameraY;controller.height=Mathf.Lerp(controller.height,tH,crouchLerpSpeed*Time.deltaTime);controller.center=Vector3.Lerp(controller.center,tC,crouchLerpSpeed*Time.deltaTime);Vector3 cP=cameraTransform.localPosition;cP.y=Mathf.Lerp(cP.y,tCY,crouchLerpSpeed*Time.deltaTime);cameraTransform.localPosition=cP;}
-    private void DropItem() { if(currentlyHeldItem!=null){currentlyHeldItem.Drop(cameraTransform, dropForce);currentlyHeldItem=null;}}
+    
+    private void DropItem() 
+    { 
+        if(currentlyHeldItem!=null)
+        {
+            // --- NEW: Re-enable collision with player when dropping ---
+            Collider[] itemColliders = currentlyHeldItem.GetComponentsInChildren<Collider>();
+            foreach (Collider c in itemColliders)
+            {
+                Physics.IgnoreCollision(c, controller, false);
+            }
+            // ---------------------------------------------------------
+
+            Rigidbody itemRb = currentlyHeldItem.GetComponent<Rigidbody>();
+            if (itemRb != null)
+            {
+                itemRb.isKinematic = false;
+                itemRb.useGravity = true;
+                itemRb.linearVelocity = Vector3.zero;
+                
+                // RESTORE DEFAULT PHYSICS PROPERTIES
+                itemRb.linearDamping = 0f;
+                itemRb.angularDamping = 0.05f; 
+                itemRb.constraints = RigidbodyConstraints.None;
+            }
+            
+            currentlyHeldItem.Drop(cameraTransform, dropForce);
+            currentlyHeldItem = null;
+        }
+    }
+    
     public void SetLookSensitivity(float sensitivity) { sensitivityScale = Mathf.Clamp(sensitivity, 1f, 20f); }
     public void SetInvertY(bool inverted) { isYInverted = inverted; }
     public float GetCameraPitch() { return xRotation; }
@@ -255,42 +349,24 @@ public class FirstPersonController : MonoBehaviour
             Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
             RaycastHit hit;
 
-            // --- ITEM USE MODE (Priority 1) ---
             if (stagedItem != null)
             {
                 bool interactionSuccessful = false;
-                
                 if (Physics.Raycast(ray, out hit, interactionRange))
                 {
                     InteractableDoor door = hit.collider.GetComponentInParent<InteractableDoor>();
-                    // Check if the item can be used on the door
                     if (door != null && door.TryUseItem(stagedItem)) 
                     {
                         inventory.ShowFeedback($"Used {stagedItem.itemName}. Door Unlocked!");
                         interactionSuccessful = true;
                     }
-                    // Add checks for other usable objects here (e.g., SavePoint, Chests, etc.)
                 }
 
-                if (interactionSuccessful)
-                {
-                    // If successful, consume the item from inventory
-                    inventory.ConsumeItem(stagedItem);
-                }
-                else
-                {
-                    // If unsuccessful or nothing was hit, clear the mode and notify
-                    inventory.itemToUse = null; 
-                    inventory.ShowFeedback($"Cannot use {stagedItem.itemName} here.");
-                }
+                if (interactionSuccessful) inventory.ConsumeItem(stagedItem);
+                else { inventory.itemToUse = null; inventory.ShowFeedback($"Cannot use {stagedItem.itemName} here."); }
                 
-                // Exit immediately, regardless of success/failure in item use mode
                 return;
             }
-            // --- END ITEM USE MODE ---
-
-
-            // --- STANDARD INTERACTION (Priority 2) ---
 
             if (currentlyHeldItem != null) { DropItem(); return; }
             
@@ -301,8 +377,36 @@ public class FirstPersonController : MonoBehaviour
                         bool wasAdded = inventory.AddItem(item);
                         if (wasAdded) { item.gameObject.SetActive(false); }
                     } else { 
-                        item.PickUp(cameraTransform); 
+                        // --- PHYSICS PICKUP SETUP ---
                         currentlyHeldItem = item; 
+                        
+                        // --- NEW: Ignore collision with player to prevent pushing/glitching ---
+                        Collider[] itemColliders = currentlyHeldItem.GetComponentsInChildren<Collider>();
+                        foreach (Collider c in itemColliders)
+                        {
+                            Physics.IgnoreCollision(c, controller, true);
+                        }
+                        // -------------------------------------------------------------------
+
+                        Rigidbody itemRb = currentlyHeldItem.GetComponent<Rigidbody>();
+                        if (itemRb != null)
+                        {
+                            itemRb.isKinematic = false;
+                            itemRb.useGravity = false;
+                            itemRb.linearVelocity = Vector3.zero;
+                            itemRb.angularVelocity = Vector3.zero;
+                            
+                            itemRb.linearDamping = 25f;
+                            itemRb.angularDamping = 25f;
+                            
+                            itemRb.constraints = RigidbodyConstraints.FreezeRotation;
+                        }
+                        else
+                        {
+                            item.PickUp(cameraTransform); 
+                            Debug.LogWarning($"PickableItem {item.itemName} lacks a Rigidbody. It may clip through walls.");
+                        }
+                        if(inventory != null) inventory.ShowFeedback($"Holding {item.itemName}.");
                     } 
                     return; 
                 }
@@ -319,7 +423,6 @@ public class FirstPersonController : MonoBehaviour
         if (context.performed && inventory != null)
         {
             if (PauseMenu.GameIsPaused) return; 
-
             inventory.ToggleInventory(); 
         } 
     }
@@ -329,7 +432,6 @@ public class FirstPersonController : MonoBehaviour
         if (context.performed)
         {
             if (inventory != null && inventory.isOpen) { inventory.ToggleInventory(); return; }
-            
             if (pauseMenu != null) { pauseMenu.TogglePause(); }
         }
     }
