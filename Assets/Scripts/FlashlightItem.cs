@@ -1,40 +1,80 @@
 using UnityEngine;
 
-// Use the existing PickableItem script as the base class
 public class FlashlightItem : PickableItem
 {
     [Header("Flashlight Components")]
     [Tooltip("The actual light component (Spotlight)")]
     public Light lightSource;
-    [Tooltip("The mesh of the flashlight model")]
+    [Tooltip("The mesh of the flashlight model (Must be a child object).")]
     public GameObject flashlightMesh;
+
+    [Header("Battery Management")]
+    public float maxBatteryLife = 300f;
+    public float drainRate = 1f;
+    public float currentBatteryLife;
 
     private bool isLightOn = false;
 
-    // We use 'new' because MonoBehaviour.Start is not virtual. 
-    protected new void Start()
+    protected override void Start()
     {
         base.Start(); 
+        
+        if (currentBatteryLife <= 0) currentBatteryLife = maxBatteryLife;
 
-        // CRITICAL FIX: We only disable the light source on start.
-        // The root PickableItem MUST stay active so the player can interact with it.
+        // Ensure the light source is disabled at startup, but leave the mesh visible
+        // so the player can see and pick up the item in the world.
         if (lightSource != null) lightSource.enabled = false;
         
-        // Ensure the mesh is initially enabled so the player can see and pick it up.
-        if (flashlightMesh != null) flashlightMesh.SetActive(true);
+        // REMOVED: if (flashlightMesh != null) flashlightMesh.SetActive(false);
+    }
+    
+    void Update()
+    {
+        if (isLightOn)
+        {
+            currentBatteryLife -= drainRate * Time.deltaTime;
+            currentBatteryLife = Mathf.Max(0f, currentBatteryLife);
+
+            if (currentBatteryLife <= 0f)
+            {
+                ToggleLight(false);
+                // Optional: Play flicker sound here
+            }
+        }
     }
 
     public bool ToggleLight(bool isOn)
     {
-        isLightOn = isOn;
+        if (isOn && currentBatteryLife <= 0f)
+        {
+            isLightOn = false;
+        }
+        else
+        {
+            isLightOn = isOn;
+        }
+        
+        // Toggle the Light Component
         if (lightSource != null) lightSource.enabled = isLightOn;
-        // The mesh only needs to be toggled if the flashlight is EQUIPPED
+        
+        // Toggle the 3D Model Visibility (This handles the 'invisible when off in hand' requirement)
         if (flashlightMesh != null) flashlightMesh.SetActive(isLightOn);
+        
         return isLightOn;
     }
 
     public bool IsOn()
     {
         return isLightOn;
+    }
+    
+    public float GetBatteryPercentage()
+    {
+        return currentBatteryLife / maxBatteryLife;
+    }
+    
+    public void Recharge(float amount)
+    {
+        currentBatteryLife = Mathf.Min(currentBatteryLife + amount, maxBatteryLife);
     }
 }

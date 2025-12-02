@@ -24,6 +24,7 @@ public class InventorySystem : MonoBehaviour
     public float doubleClickTime = 0.3f; 
 
     [Header("Dependencies")]
+    // This controller now manages both Flashlight and Glowstick
     public FlashlightController flashlightController; 
 
     public bool isOpen = false; 
@@ -103,10 +104,11 @@ public class InventorySystem : MonoBehaviour
             return false; 
         }
         
-        // Note: The flashlight logic here handles pickup when the flashlight is already equipped.
-        if (item is FlashlightItem && flashlightController != null && flashlightController.GetEquippedItem() != null)
+        // Check if the item being picked up is currently equipped and unequip it.
+        if (flashlightController != null && flashlightController.GetEquippedItem() == item)
         {
-            flashlightController.Unequip();
+            // Using the generalized unequip method
+            flashlightController.UnequipCurrentLight(); 
         }
 
         collectedItems.Add(item);
@@ -131,9 +133,11 @@ public class InventorySystem : MonoBehaviour
             return; 
         }
 
-        if (markedItem is FlashlightItem && flashlightController != null && flashlightController.GetEquippedItem() == markedItem)
+        // Handle unequip logic for both Flashlight and Glowstick if they are about to be discarded
+        if (flashlightController != null && flashlightController.GetEquippedItem() == markedItem)
         {
-            flashlightController.Unequip();
+            // Using the generalized unequip method
+            flashlightController.UnequipCurrentLight(); 
         }
 
         collectedItems.Remove(markedItem);
@@ -255,21 +259,60 @@ public class InventorySystem : MonoBehaviour
         
         if (item is FlashlightItem flashlight && flashlightController != null)
         {
-            // Toggle equip state
+            // --- Flashlight Equipping Logic ---
+            
+            // Check if the Flashlight is already the equipped item
             if (flashlightController.GetEquippedItem() == flashlight)
             {
-                flashlightController.Unequip();
+                // If equipped, put it away (unequip)
+                flashlightController.UnequipCurrentLight();
                 ShowFeedback($"{item.itemName} put away.");
             }
             else
             {
-                // Unequip current item before equipping the new one
-                if (flashlightController.GetEquippedItem() != null)
-                {
-                    flashlightController.Unequip();
-                }
-                flashlightController.Equip(flashlight);
+                // To equip: 1. Always unequip the current item (clears the slot and turns off any competing light).
+                flashlightController.UnequipCurrentLight(); 
+                
+                // 2. Equip the new Flashlight
+                flashlightController.EquipLightItem(flashlight.GetComponent<PickableItem>());
                 ShowFeedback($"{item.itemName} equipped. Press F to toggle light.");
+            }
+            CloseInventory(); 
+            return;
+        }
+
+        if (item is GlowstickItem glowstick && flashlightController != null)
+        {
+            // --- Glowstick Equipping Logic ---
+            
+            // Check if the Glowstick is already the equipped item
+            if (flashlightController.GetEquippedItem() == glowstick)
+            {
+                // If equipped, toggle its light state (Glowstick vs. Flashlight exclusivity enforced by FPC)
+                bool isNowOn = !glowstick.IsOn();
+                
+                if (isNowOn)
+                {
+                    // If turning ON, ensure any equipped Flashlight is manually turned off
+                    FlashlightItem flItem = flashlightController.GetEquippedItem()?.GetComponent<FlashlightItem>(); 
+                    if (flItem != null && flItem.IsOn())
+                    {
+                        flItem.ToggleLight(false);
+                    }
+                }
+                
+                glowstick.ToggleLight(isNowOn);
+                ShowFeedback($"{item.itemName} {(isNowOn ? "activated" : "deactivated")}.");
+            }
+            else
+            {
+                // To equip: 1. Always unequip the current item (clears the slot and turns off any competing light).
+                flashlightController.UnequipCurrentLight(); 
+                
+                // 2. Equip the new Glowstick and turn it ON
+                flashlightController.EquipLightItem(glowstick.GetComponent<PickableItem>());
+                glowstick.ToggleLight(true); 
+                ShowFeedback($"{item.itemName} equipped and activated. Press G to toggle light.");
             }
             CloseInventory(); 
             return;
@@ -324,15 +367,40 @@ public class InventorySystem : MonoBehaviour
         if (feedbackText != null) feedbackText.text = "";
     }
     
+    /// <summary>
+    /// Finds and returns the first *unequipped* FlashlightItem in the inventory list.
+    /// </summary>
     public FlashlightItem FindFlashlight()
     {
+        // Finds an *unequipped* flashlight in the inventory
         foreach (var item in collectedItems)
         {
             if (item is FlashlightItem flashlight)
             {
+                // Check if the flashlight is NOT currently equipped in the light slot
                 if (flashlightController == null || flashlightController.GetEquippedItem() != flashlight)
                 {
                     return flashlight;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds and returns the first *unequipped* GlowstickItem in the inventory list.
+    /// </summary>
+    public GlowstickItem FindGlowstick()
+    {
+        // Finds an *unequipped* glowstick in the inventory
+        foreach (var item in collectedItems)
+        {
+            if (item is GlowstickItem glowstick)
+            {
+                 // Check if the glowstick is NOT currently equipped in the light slot
+                if (flashlightController == null || flashlightController.GetEquippedItem() != glowstick)
+                {
+                    return glowstick;
                 }
             }
         }
@@ -361,7 +429,8 @@ public class InventorySystem : MonoBehaviour
         
         if (flashlightController != null)
         {
-            flashlightController.Unequip();
+            // Use the generalized unequip method
+            flashlightController.UnequipCurrentLight(); 
         }
 
         foreach (var item in collectedItems)
@@ -401,9 +470,14 @@ public class InventorySystem : MonoBehaviour
                     pickable.itemId = savedItem.itemId;
                     pickable.canBeDiscarded = savedItem.canBeDiscarded;
 
+                    // Ensure all light items are off on load
                     if (pickable is FlashlightItem flashlight)
                     {
                         flashlight.ToggleLight(false);
+                    }
+                    if (pickable is GlowstickItem glowstick)
+                    {
+                        glowstick.ToggleLight(false);
                     }
                     
                     collectedItems.Add(pickable);

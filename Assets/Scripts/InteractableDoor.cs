@@ -17,11 +17,17 @@ public class InteractableDoor : MonoBehaviour
 
     // Rotation/Physics members
     private Quaternion startRotation;
+    // We only need one target rotation for the fixed swing direction
     private Quaternion openRotation;
     private Transform pivot;
     private bool isInteracting = false;
     private float targetRotationY;
     
+    // REMOVED: For dynamic swing calculation (no longer needed)
+    // private Transform playerCamera;
+    // private float swingSign = 1f; 
+    // private Quaternion currentOpenTargetRotation; 
+
     private InventorySystem inventorySystem; 
 
     void Start()
@@ -29,16 +35,36 @@ public class InteractableDoor : MonoBehaviour
         pivot = transform; 
         
         startRotation = pivot.localRotation;
+        
+        // Calculate the single, fixed open rotation
         openRotation = startRotation * Quaternion.Euler(0, openAngle, 0);
+        
         targetRotationY = 0f; 
         
         inventorySystem = FindFirstObjectByType<InventorySystem>();
         
+        // REMOVED: Camera finding for positional checks
+        // if (Camera.main != null)
+        // {
+        //     playerCamera = Camera.main.transform;
+        // }
+
         if (requiredKeyId == 0)
         {
              Debug.LogError($"Door on object {gameObject.name} has requiredKeyId set to 0! Please set a unique ID in the Inspector.");
         }
     }
+
+    // --- NEW: Method for Valves/Switches to call ---
+    public void UnlockByMechanism()
+    {
+        isLocked = false;
+        if (inventorySystem != null)
+        {
+            inventorySystem.ShowFeedback("Mechanism active. Hatch unlocked.");
+        }
+    }
+    // -----------------------------------------------
 
     /// <summary>
     /// Attempts to use an item from the inventory on this door (e.g., a key).
@@ -76,21 +102,30 @@ public class InteractableDoor : MonoBehaviour
     {
         if (isLocked)
         {
-            if (inventorySystem != null) inventorySystem.ShowFeedback("It's locked. A key is needed.");
+            if (inventorySystem != null) inventorySystem.ShowFeedback("It's locked.");
             Debug.Log("Door is locked.");
             return;
         }
         
         isInteracting = true;
+        
+        // --- FIXED SWING LOGIC ---
+        // Always targets the pre-calculated positive open rotation.
+        // The mouse drag direction is also fixed (dragging right opens the door).
+        // --- END FIXED SWING LOGIC ---
     }
     
     public void UpdateInteraction(float xInput)
     {
         if (!isInteracting || isLocked) return; 
 
+        // Always use a positive sign (1f) so dragging right (positive xInput) opens the door.
         targetRotationY += xInput * interactionSpeed * Time.deltaTime * 1f; 
+        
+        // Clamp between 0 (closed) and 1 (fully open)
         targetRotationY = Mathf.Clamp(targetRotationY, 0f, 1f); 
         
+        // Interpolate between startRotation and the single, fixed openRotation
         Quaternion targetRot = Quaternion.Lerp(startRotation, openRotation, targetRotationY);
         pivot.localRotation = targetRot;
     }

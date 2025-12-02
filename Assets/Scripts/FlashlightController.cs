@@ -6,40 +6,50 @@ public class FlashlightController : MonoBehaviour
     [Tooltip("The relative position offset from the camera's center.")]
     public Vector3 heldPosition = new Vector3(0.4f, -0.4f, 0.5f);
     
-    private FlashlightItem currentFlashlightItem;
-    private Rigidbody currentRb; // Reference for the flashlight's Rigidbody
+    // The current item equipped in the light slot, regardless of whether it's a flashlight or glowstick.
+    private PickableItem currentEquippedItem; 
+    private Rigidbody currentRb; 
     private bool isEquipped = false;
 
-    public void Equip(FlashlightItem item)
+    /// <summary>
+    /// Equips a generic light item (Flashlight or Glowstick) into the held slot.
+    /// </summary>
+    public void EquipLightItem(PickableItem item)
     {
-        currentFlashlightItem = item;
-        currentRb = item.GetComponent<Rigidbody>(); // Get Rigidbody reference
+        // 1. Ensure any currently held item is unequipped first for clean transition
+        UnequipCurrentLight(); 
+
+        currentEquippedItem = item;
+        currentRb = item.GetComponent<Rigidbody>(); 
         
         if (currentRb != null)
         {
-            // FIX: Set velocity to zero BEFORE setting it to kinematic.
-            // This stops any residual movement before physics control is handed to the transform.
             currentRb.linearVelocity = Vector3.zero; 
             currentRb.isKinematic = true; 
         }
         
-        currentFlashlightItem.gameObject.SetActive(true);
+        currentEquippedItem.gameObject.SetActive(true);
+        currentEquippedItem.transform.SetParent(transform); 
         
-        // Attach the item directly to this controller (which should be a rigid child of the Main Camera)
-        currentFlashlightItem.transform.SetParent(transform); 
-        
-        // Set its local position and rotation, ensuring rigid follow
-        currentFlashlightItem.transform.localPosition = heldPosition;
-        currentFlashlightItem.transform.localRotation = Quaternion.identity;
+        currentEquippedItem.transform.localPosition = heldPosition;
+        currentEquippedItem.transform.localRotation = Quaternion.identity;
 
         isEquipped = true;
     }
 
-    public void Unequip()
+    /// <summary>
+    /// Unequips whatever light item is currently held.
+    /// </summary>
+    public void UnequipCurrentLight()
     {
-        if (currentFlashlightItem != null)
+        if (currentEquippedItem != null)
         {
-            currentFlashlightItem.ToggleLight(false);
+            // Try to turn off the light before storing/dropping it
+            FlashlightItem flItem = currentEquippedItem.GetComponent<FlashlightItem>();
+            if (flItem != null) flItem.ToggleLight(false);
+            
+            GlowstickItem gsItem = currentEquippedItem.GetComponent<GlowstickItem>();
+            if (gsItem != null) gsItem.ToggleLight(false);
             
             // Re-enable physics simulation when unequipped/put away
             if (currentRb != null)
@@ -48,16 +58,19 @@ public class FlashlightController : MonoBehaviour
             }
             
             // Detach and hide
-            currentFlashlightItem.transform.SetParent(null);
-            currentFlashlightItem.gameObject.SetActive(false);
+            currentEquippedItem.transform.SetParent(null);
+            currentEquippedItem.gameObject.SetActive(false);
         }
-        currentFlashlightItem = null;
-        currentRb = null; // Clear reference
+        currentEquippedItem = null;
+        currentRb = null; 
         isEquipped = false;
     }
     
-    public FlashlightItem GetEquippedItem()
+    /// <summary>
+    /// Returns the currently equipped light item (Flashlight or Glowstick)
+    /// </summary>
+    public PickableItem GetEquippedItem()
     {
-        return currentFlashlightItem;
+        return currentEquippedItem;
     }
 }

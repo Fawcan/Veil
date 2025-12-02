@@ -152,7 +152,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 57d6261fc30a2434997580a697b4d67b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PickableItem
-  itemId: 1
+  itemId: 5
   itemName: Box
   itemDescription: Just a box
   icon: {fileID: 21300000, guid: 2a2e80c8ee6bebe4baa19d204aa32473, type: 3}
