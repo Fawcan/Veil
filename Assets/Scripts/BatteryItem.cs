@@ -13,7 +13,7 @@ public class BatteryItem : PickableItem
         base.Start();
         // Batteries should always be storable so they can be carried and used later
         isStorable = true; 
-        itemName = "Battery Pack"; // Default name for inventory display
+        itemName = "Battery"; // Default name for inventory display
     }
 
     // You can add an Interact() or custom logic here if needed, 

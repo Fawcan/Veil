@@ -4,13 +4,13 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonController : MonoBehaviour
 {
-    // [Header("...")] sections omitted for brevity but remain in the file
-    // ... [Player Movement]
-    // ... [Camera Look]
-    // ... [Crouching]
-    // ... [Ground & Obstacle Check]
-    // ... [Interaction]
-    // ... [Holding Physics]
+    // Saved User Preferences:
+    // doorInteractSpeedMultiplier = 0.75f, interactionRange = 2f, and interactionBreakDistance = 3f.
+    
+    [Header("Health System")]
+    public float maxHealth = 100f;
+    public float currentHealth;
+    
     [Header("Player Movement")]
     public float moveSpeed = 5.0f;
     public float jumpHeight = 1.8f;
@@ -31,14 +31,14 @@ public class FirstPersonController : MonoBehaviour
     public LayerMask obstacleMask;
     
     [Header("Interaction")]
-    public float interactionRange = 2f; 
+    public float interactionRange = 2f; // User Preferred Value: 2f
     public float dropForce = 5f;
     [Tooltip("Force applied to an item when explicitly thrown/smashed.")]
     public float smashForce = 20f; // Throwing force magnitude
     [Tooltip("Multiplier for movement speed while interacting with an object.")]
-    public float interactSpeedMultiplier = 0.75f; 
+    public float interactSpeedMultiplier = 0.75f; // User Preferred Value: 0.75f
     [Tooltip("How far the player can move from a door before it's auto-released.")]
-    public float interactionBreakDistance = 3f; 
+    public float interactionBreakDistance = 3f; // User Preferred Value: 3f
     
     [Header("Holding Physics")] 
     public float holdDistance = 1.5f; 
@@ -47,7 +47,7 @@ public class FirstPersonController : MonoBehaviour
     [Header("UI & Systems")]
     public PauseMenu pauseMenu; 
     public InventorySystem inventory;
-    public FlashlightController flashlightController; // Renamed to LightSourceController in practice
+    public FlashlightController flashlightController; 
     
     [Header("Crosshair")]
     public float crosshairSize = 32f;
@@ -66,7 +66,7 @@ public class FirstPersonController : MonoBehaviour
     private CharacterController controller; 
     private Vector3 playerVelocity;
     private bool isGrounded;
-    private float xRotation = 0f;
+    private float xRotation = 0f; // Camera Pitch
 
     private Vector2 moveInput;
     private Vector2 lookInput;
@@ -81,15 +81,25 @@ public class FirstPersonController : MonoBehaviour
 
     void Start()
     {
+        // Initialize Health
+        currentHealth = maxHealth;
+
         controller = GetComponent<CharacterController>(); 
         if (cameraTransform == null) cameraTransform = Camera.main.transform;
         standingHeight = controller.height;
         standingCenter = controller.center;
         standingCameraY = cameraTransform.localPosition.y;
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false; 
+        
+        // Lock the cursor on game start
+        LockCursor(); 
         
         if (controller != null) controller.enabled = true;
+    }
+    
+    public void LockCursor()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false; 
     }
 
     void Update()
@@ -100,6 +110,11 @@ public class FirstPersonController : MonoBehaviour
             Debug.LogWarning("CharacterController was found disabled outside of a load state and was forcibly re-enabled.");
         }
         
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) 
+        {
+            return;
+        }
+
         isGrounded = controller.isGrounded;
         if (isGrounded && playerVelocity.y < 0) { playerVelocity.y = -2f; }
         
@@ -124,6 +139,7 @@ public class FirstPersonController : MonoBehaviour
 
         if (PauseMenu.GameIsPaused) return;
         if (inventory != null && inventory.isOpen) return;
+        
 
         UpdateHeldItemPhysics();
 
@@ -161,6 +177,29 @@ public class FirstPersonController : MonoBehaviour
         CheckInteractable();
     }
     
+    public void TakeDamage(float amount)
+    {
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+
+        currentHealth -= amount;
+        if (inventory != null) inventory.ShowFeedback($"Health: {Mathf.RoundToInt(currentHealth)}");
+
+        if (currentHealth <= 0)
+        {
+            Die();
+        }
+    }
+
+    private void Die()
+    {
+        Debug.Log("Player Died. Showing Menu...");
+        
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.TriggerGameOver();
+        }
+    }
+
     void UpdateHeldItemPhysics()
     {
         if (currentlyHeldItem == null) return;
@@ -173,7 +212,7 @@ public class FirstPersonController : MonoBehaviour
         
         if (displacement.magnitude > interactionBreakDistance) 
         {
-            DropItem(false); // Simple drop when walking too far
+            DropItem(false); 
             if(inventory != null) inventory.ShowFeedback("Held item dropped due to excessive distance.");
             return;
         }
@@ -197,7 +236,6 @@ public class FirstPersonController : MonoBehaviour
         {
             if (inventory != null && inventory.itemToUse != null)
             {
-                // Check for door (Key) or Flashlight (Battery, if we revert to aiming)
                 if (hit.collider.GetComponentInParent<InteractableDoor>() != null || 
                     hit.collider.GetComponentInParent<FlashlightItem>() != null) 
                 {
@@ -225,6 +263,50 @@ public class FirstPersonController : MonoBehaviour
 
     void OnGUI()
     {
+        // 1. --- DRAW IN-GAME HUD (HEALTH & BATTERY) ---
+        if (GameManager.Instance == null || !GameManager.Instance.isGameOver) 
+        {
+            // Display Health 
+            GUIStyle healthStyle = new GUIStyle(GUI.skin.label);
+            healthStyle.fontSize = 24;
+            healthStyle.normal.textColor = currentHealth > 20 ? Color.white : Color.red;
+            GUI.Label(new Rect(20, Screen.height - 50, 200, 40), $"Health: {Mathf.RoundToInt(currentHealth)}", healthStyle);
+
+            // Battery HUD Display
+            PickableItem equippedLightItem = flashlightController != null ? flashlightController.GetEquippedItem() : null;
+            if (equippedLightItem != null)
+            {
+                FlashlightItem equippedLight = equippedLightItem.GetComponent<FlashlightItem>();
+                if (equippedLight != null && equippedLight.IsOn())
+                {
+                    float batteryPct = equippedLight.GetBatteryPercentage();
+                    string batteryText = $"Battery: {Mathf.RoundToInt(batteryPct * 100)}%";
+                    
+                    GUIStyle style = new GUIStyle(GUI.skin.label);
+                    style.alignment = TextAnchor.UpperRight;
+                    style.fontSize = 24;
+                    style.normal.textColor = batteryPct > 0.15f ? Color.white : Color.red; 
+
+                    GUI.Label(new Rect(Screen.width - 200, 10, 180, 40), batteryText, style);
+                }
+                else if (equippedLightItem.GetComponent<GlowstickItem>() != null)
+                {
+                    GlowstickItem equippedGlowstick = equippedLightItem.GetComponent<GlowstickItem>();
+                    if (equippedGlowstick.IsOn())
+                    {
+                        GUIStyle style = new GUIStyle(GUI.skin.label);
+                        style.alignment = TextAnchor.UpperRight;
+                        style.fontSize = 24;
+                        style.normal.textColor = Color.green; 
+
+                        GUI.Label(new Rect(Screen.width - 200, 10, 180, 40), "Glowstick ON", style);
+                    }
+                }
+            }
+        }
+        
+        // 2. --- CUSTOM CURSOR DRAWING (Runs when cursor lock is NONE, for all menus) ---
+
         bool isCursorUnlocked = Cursor.lockState != CursorLockMode.Locked;
 
         if (isCursorUnlocked)
@@ -241,9 +323,11 @@ public class FirstPersonController : MonoBehaviour
             {
                 Cursor.visible = true;
             }
-            return;
+            return; 
         } 
         
+        // 3. --- CROSSHAIR DRAWING (Runs only if cursor is locked and game is running) ---
+
         if (PauseMenu.GameIsPaused) return; 
         if (inventory != null && inventory.isOpen) return; 
 
@@ -276,43 +360,25 @@ public class FirstPersonController : MonoBehaviour
             float yMin = (Screen.height / 2) - (crosshairSize / 2);
             GUI.DrawTexture(new Rect(xMin, yMin, crosshairSize, crosshairSize), textureToDraw);
         }
-        
-        // Battery HUD Display (Simple text for now)
-        PickableItem equippedLightItem = flashlightController != null ? flashlightController.GetEquippedItem() : null;
-        if (equippedLightItem != null)
-        {
-            // Check for Flashlight to show battery percentage
-            FlashlightItem equippedLight = equippedLightItem.GetComponent<FlashlightItem>();
-            if (equippedLight != null && equippedLight.IsOn())
-            {
-                float batteryPct = equippedLight.GetBatteryPercentage();
-                string batteryText = $"Battery: {Mathf.RoundToInt(batteryPct * 100)}%";
-                
-                GUIStyle style = new GUIStyle(GUI.skin.label);
-                style.alignment = TextAnchor.UpperRight;
-                style.fontSize = 24;
-                style.normal.textColor = batteryPct > 0.15f ? Color.white : Color.red; 
-
-                GUI.Label(new Rect(Screen.width - 200, 10, 180, 40), batteryText, style);
-            }
-            // Check for Glowstick to show "ON" status
-            else if (equippedLightItem.GetComponent<GlowstickItem>() != null)
-            {
-                GlowstickItem equippedGlowstick = equippedLightItem.GetComponent<GlowstickItem>();
-                if (equippedGlowstick.IsOn())
-                {
-                    GUIStyle style = new GUIStyle(GUI.skin.label);
-                    style.alignment = TextAnchor.UpperRight;
-                    style.fontSize = 24;
-                    style.normal.textColor = Color.green; 
-
-                    GUI.Label(new Rect(Screen.width - 200, 10, 180, 40), "Glowstick ON", style);
-                }
-            }
-        }
     }
     
-    // ... (Crouch and Movement methods omitted for brevity)
+    // --- Camera Load State (Updated to remove pitch parameter and reset xRotation) ---
+    /// <summary>
+    /// Loads the player's position and rotation (yaw) and resets the camera pitch to 0.
+    /// </summary>
+    public void LoadState(Vector3 position, Quaternion rotation) 
+    { 
+        controller.enabled = false; 
+        transform.position = position; 
+        transform.rotation = rotation; 
+        
+        // Reset camera pitch to 0 degrees (straight forward)
+        xRotation = 0f; 
+        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f); 
+        
+        controller.enabled = true; 
+    }
+    
     private void UpdateCrouchState() { if(crouchPressed && isGrounded){isCrouching=true;}else if(!crouchPressed && isCrouching){Vector3 rO=transform.position+controller.center+(Vector3.up*(controller.height/2)*0.9f);float rD=(standingHeight-controller.height)+0.1f;if(!Physics.Raycast(rO,Vector3.up,rD,obstacleMask)){isCrouching=false;}}}
     private void ApplyCrouch() { float tH=isCrouching?standingHeight*crouchHeightMultiplier:standingHeight;Vector3 tC=isCrouching?standingCenter*crouchHeightMultiplier:standingCenter;float tCY=isCrouching?standingCameraY*crouchHeightMultiplier:standingCameraY;controller.height=Mathf.Lerp(controller.height,tH,crouchLerpSpeed*Time.deltaTime);controller.center=Vector3.Lerp(controller.center,tC,crouchLerpSpeed*Time.deltaTime);Vector3 cP=cameraTransform.localPosition;cP.y=Mathf.Lerp(cP.y,tCY,crouchLerpSpeed*Time.deltaTime);cameraTransform.localPosition=cP;}
     
@@ -356,13 +422,11 @@ public class FirstPersonController : MonoBehaviour
         }
     }
     
-    // ... (Look and Load methods omitted for brevity)
     public void SetLookSensitivity(float sensitivity) { sensitivityScale = Mathf.Clamp(sensitivity, 1f, 20f); }
     public void SetInvertY(bool inverted) { isYInverted = inverted; }
     public float GetCameraPitch() { return xRotation; }
-    public void LoadState(Vector3 position, Quaternion rotation, float pitch) { controller.enabled = false; transform.position = position; transform.rotation = rotation; xRotation = pitch; cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f); controller.enabled = true; }
 
-    // ... (Input Action handlers omitted for brevity)
+    // --- Input Action handlers ---
     public void OnMove(InputAction.CallbackContext context) { moveInput = context.ReadValue<Vector2>(); }
     public void OnLook(InputAction.CallbackContext context) { lookInput = context.ReadValue<Vector2>(); }
     public void OnCrouch(InputAction.CallbackContext context) { crouchPressed = context.ReadValueAsButton(); }
@@ -376,6 +440,8 @@ public class FirstPersonController : MonoBehaviour
     }
     public void OnInventory(InputAction.CallbackContext context)
     { 
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+
         if (context.performed && inventory != null)
         {
             if (PauseMenu.GameIsPaused) return; 
@@ -384,6 +450,8 @@ public class FirstPersonController : MonoBehaviour
     }
     public void OnPause(InputAction.CallbackContext context)
     {
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+
         if (context.performed)
         {
             if (inventory != null && inventory.isOpen) { inventory.ToggleInventory(); return; }
@@ -393,6 +461,8 @@ public class FirstPersonController : MonoBehaviour
     
     public void OnInteract(InputAction.CallbackContext context)
     {
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+
         if (context.canceled || !context.ReadValueAsButton()) { 
             if (heldDoor != null) { heldDoor.StopInteract(); heldDoor = null; } 
             if (heldValve != null) { heldValve.StopInteract(); heldValve = null; }
@@ -413,7 +483,6 @@ public class FirstPersonController : MonoBehaviour
                 bool interactionSuccessful = false;
                 FlashlightItem equippedLight = flashlightController?.GetEquippedItem()?.GetComponent<FlashlightItem>();
 
-                // --- INSTANT BATTERY USE LOGIC (Unchanged) ---
                 BatteryItem battery = stagedItem.GetComponent<BatteryItem>();
                 if (battery != null)
                 {
@@ -433,9 +502,7 @@ public class FirstPersonController : MonoBehaviour
                         return;
                     }
                 }
-                // --- END INSTANT BATTERY USE LOGIC ---
                 
-                // --- World interaction for non-battery items (Keys, etc.) ---
                 if (!interactionSuccessful && Physics.Raycast(ray, out hit, interactionRange))
                 {
                     InteractableDoor door = hit.collider.GetComponentInParent<InteractableDoor>();
@@ -461,7 +528,6 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
 
-            // Standard drop if we just click interact while holding an item
             if (currentlyHeldItem != null) { DropItem(false); return; }
             
             if (Physics.Raycast(ray, out hit, interactionRange)) {
@@ -505,9 +571,15 @@ public class FirstPersonController : MonoBehaviour
         }
     }
     
-    // --- FLASHIGHT INPUT ---
     public void OnFlashlight(InputAction.CallbackContext context)
     {
+        if (PauseMenu.GameIsPaused || (inventory != null && inventory.isOpen))
+        {
+            return;
+        }
+
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+        
         if (context.performed)
         {
             if (inventory == null || flashlightController == null) return;
@@ -518,25 +590,20 @@ public class FirstPersonController : MonoBehaviour
             
             if (equippedLight != null) 
             {
-                // Toggling Flashlight: If turning ON, turn OFF the glowstick first.
                 bool newFlashlightState = !equippedLight.IsOn();
                 
                 if (newFlashlightState)
                 {
-                    // If turning on flashlight, first unequip/turn off the glowstick
                     if (equippedGlowstick != null && equippedGlowstick.IsOn())
                     {
                         equippedGlowstick.ToggleLight(false);
-                        // No need to unequip the glowstick fully, just turn it off
                     }
                     else if (equippedGlowstick != null && !equippedLight.IsOn())
                     {
-                        // If a glowstick is equipped but off, unequip it to equip the flashlight
                         flashlightController.UnequipCurrentLight();
-                        equippedItem = null; // Clear item to force find/equip below
+                        equippedItem = null; 
                     }
                     
-                    // If flashlight is in inventory but a glowstick is equipped, unequip it.
                     if (equippedItem?.GetComponent<GlowstickItem>() != null)
                     {
                         flashlightController.UnequipCurrentLight();
@@ -544,7 +611,6 @@ public class FirstPersonController : MonoBehaviour
                     }
                 }
                 
-                // Check again after potential unequip
                 equippedLight = flashlightController.GetEquippedItem()?.GetComponent<FlashlightItem>();
                 if (equippedLight != null)
                 {
@@ -552,7 +618,6 @@ public class FirstPersonController : MonoBehaviour
                 }
                 else
                 {
-                    // Find and equip flashlight from inventory
                     FlashlightItem inventoryLight = inventory.FindFlashlight();
                     if (inventoryLight != null) {
                         flashlightController.EquipLightItem(inventoryLight.GetComponent<PickableItem>());
@@ -563,9 +628,7 @@ public class FirstPersonController : MonoBehaviour
             } 
             else if (equippedItem != null)
             {
-                // If the equipped item is *not* a flashlight, unequip it to make room.
                 flashlightController.UnequipCurrentLight();
-                // Then try to equip the flashlight
                 FlashlightItem inventoryLight = inventory.FindFlashlight();
                 if (inventoryLight != null) {
                     flashlightController.EquipLightItem(inventoryLight.GetComponent<PickableItem>());
@@ -573,7 +636,7 @@ public class FirstPersonController : MonoBehaviour
                     inventory.ShowFeedback("Flashlight ON");
                 } else { inventory.ShowFeedback("No Flashlight in Inventory"); }
             }
-            else // Nothing equipped
+            else 
             {
                  FlashlightItem inventoryLight = inventory.FindFlashlight();
                  if (inventoryLight != null) {
@@ -583,14 +646,19 @@ public class FirstPersonController : MonoBehaviour
                  } else { inventory.ShowFeedback("No Flashlight in Inventory"); }
             }
 
-            // Cleanup held item state if it was accidentally the flashlight
             if (currentlyHeldItem != null && flashlightController.GetEquippedItem() == currentlyHeldItem) { currentlyHeldItem = null; }
         }
     }
 
-    // --- NEW GLOWSTICK INPUT (Key 'G') ---
     public void OnGlowstick(InputAction.CallbackContext context)
     {
+        if (PauseMenu.GameIsPaused || (inventory != null && inventory.isOpen))
+        {
+            return;
+        }
+
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+        
         if (context.performed)
         {
             if (inventory == null || flashlightController == null) return;
@@ -601,12 +669,10 @@ public class FirstPersonController : MonoBehaviour
             
             if (equippedGlowstick != null)
             {
-                // Toggling Glowstick: If turning ON, turn OFF the flashlight first.
                 bool newGlowstickState = !equippedGlowstick.IsOn();
                 
                 if (newGlowstickState)
                 {
-                    // If turning on glowstick, turn OFF the flashlight first
                     if (equippedLight != null && equippedLight.IsOn())
                     {
                         equippedLight.ToggleLight(false);
@@ -618,21 +684,17 @@ public class FirstPersonController : MonoBehaviour
             }
             else if (equippedItem != null)
             {
-                // If something else is equipped (like the flashlight), unequip it to equip the glowstick.
                 flashlightController.UnequipCurrentLight();
-
-                // Then try to equip the glowstick
                 GlowstickItem inventoryGlowstick = inventory.FindGlowstick();
                 if (inventoryGlowstick != null) {
                     flashlightController.EquipLightItem(inventoryGlowstick.GetComponent<PickableItem>());
-                    // If the flashlight was on, it's already off due to UnequipCurrentLight, but double check
                     if (equippedLight != null && equippedLight.IsOn()) equippedLight.ToggleLight(false);
                     
                     inventoryGlowstick.ToggleLight(true);
                     inventory.ShowFeedback("Glowstick ON");
                 } else { inventory.ShowFeedback("No Glowstick in Inventory"); }
             }
-            else // Nothing equipped
+            else 
             {
                  GlowstickItem inventoryGlowstick = inventory.FindGlowstick();
                  if (inventoryGlowstick != null) {
@@ -642,8 +704,12 @@ public class FirstPersonController : MonoBehaviour
                  } else { inventory.ShowFeedback("No Glowstick in Inventory"); }
             }
 
-            // Cleanup held item state if it was accidentally the glowstick
             if (currentlyHeldItem != null && flashlightController.GetEquippedItem() == currentlyHeldItem) { currentlyHeldItem = null; }
         }
+    }
+    
+    public float GetMoveInputMagnitude()
+    {
+        return moveInput.magnitude;
     }
 }

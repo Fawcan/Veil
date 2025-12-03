@@ -3,6 +3,10 @@ using UnityEngine;
 // Ensure this script is on all pickable items, including your keys.
 public class PickableItem : MonoBehaviour
 {
+    [Header("Saving")]
+    [Tooltip("MUST be a unique ID for this item instance in the world. Used for saving collected state.")]
+    public string worldItemID; // <--- This line fixes the 'worldItemID' error.
+    
     [Header("Item Identification")]
     [Tooltip("Unique ID used for linking keys to doors/containers.")]
     public int itemId = 0; 
@@ -18,10 +22,8 @@ public class PickableItem : MonoBehaviour
     [Tooltip("If true, item is added to inventory. If false, it's held and droppable.")]
     public bool isStorable = true; 
     
-    // --- NEW PROPERTY FOR IN-INVENTORY USAGE ---
     [Tooltip("If checked, the 'Use' button appears and double-click works. Used for keys or immediate consumables.")]
     public bool canBeUsedFromInventory = false; 
-    // ------------------------------------------
     
     [Tooltip("If checked, the item can be removed (discarded) from the inventory.")]
     public bool canBeDiscarded = true; 
@@ -38,6 +40,12 @@ public class PickableItem : MonoBehaviour
         if (itemId == 0 && isStorable)
         {
             Debug.LogWarning($"Item '{itemName}' is storable but has ID 0. Make sure you set a unique ID!");
+        }
+        
+        // Critical check for world saving integrity
+        if (string.IsNullOrEmpty(worldItemID))
+        {
+            Debug.LogError($"PickableItem '{itemName}' is missing a unique 'World Item ID'. This item will not be saved properly!");
         }
     }
     

@@ -364,7 +364,7 @@ public class InventorySystem : MonoBehaviour
     IEnumerator HideFeedbackAfterDelay(float delay)
     {
         yield return new WaitForSecondsRealtime(delay); 
-        if (feedbackText != null) feedbackText.text = "";
+        if (feedbackText != null) feedbackText = null;
     }
     
     /// <summary>
@@ -408,6 +408,16 @@ public class InventorySystem : MonoBehaviour
     }
 
     // --- SAVE/LOAD METHODS ---
+    
+    /// <summary>
+    /// Returns the live list of PickableItem instances currently held in the inventory.
+    /// This is used by the GameManager during saving to collect the unique 'worldItemID' 
+    /// from each instance for world state cleanup upon loading.
+    /// </summary>
+    public List<PickableItem> GetCollectedItems() // <--- This line fixes the InventorySystem error.
+    {
+        return collectedItems;
+    }
 
     public List<SaveData.SavedInventoryItem> GetSavedItemsData()
     {
@@ -427,14 +437,17 @@ public class InventorySystem : MonoBehaviour
     {
         Debug.Log($"[INVENTORY LOAD START] Attempting to load {savedItemData.Count} items.");
         
+        // 1. Unequip any light item (since the old references are about to be destroyed)
         if (flashlightController != null)
         {
             // Use the generalized unequip method
             flashlightController.UnequipCurrentLight(); 
         }
 
+        // 2. Clean up all existing, instantiated inventory objects
         foreach (var item in collectedItems)
         {
+            // Crucial: Destroy the objects instantiated by the previous run/load
             if (item != null && item.gameObject != null) 
             {
                 Destroy(item.gameObject);
@@ -447,6 +460,7 @@ public class InventorySystem : MonoBehaviour
         if (discardButton != null) discardButton.SetActive(false);
         if (useButton != null) useButton.SetActive(false); 
 
+        // 3. Re-instantiate items from saved data
         foreach (SaveData.SavedInventoryItem savedItem in savedItemData)
         {
             string path = $"Items/{savedItem.itemName}";
@@ -456,8 +470,9 @@ public class InventorySystem : MonoBehaviour
             {
                 GameObject itemObj = Instantiate(itemPrefab);
                 
+                // Hide and position far away to ensure no interaction
                 itemObj.transform.SetParent(null);
-                itemObj.transform.position = Vector3.zero;
+                itemObj.transform.position = Vector3.zero; // Or far below the map
                 itemObj.transform.rotation = Quaternion.identity;
                 itemObj.name = $"INVENTORY_ITEM_HIDDEN_{savedItem.itemName}";
                 
