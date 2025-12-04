@@ -54,6 +54,8 @@ public class FirstPersonController : MonoBehaviour
     public Texture2D defaultCrosshair; 
     public Texture2D hoverCrosshair;   
     public Texture2D useCrosshair; 
+    [Tooltip("Crosshair to show when hovering over an interactable ladder.")]
+    public Texture2D ladderHoverCrosshair;
     public Texture2D interactCrosshair; 
     public Texture2D useItemCrosshair; 
     public Texture2D inventoryCursor; 
@@ -75,9 +77,11 @@ public class FirstPersonController : MonoBehaviour
     private PickableItem currentlyHeldItem = null;
     private InteractableDoor heldDoor = null;
     private InteractableValve heldValve = null;
-    
+    private InteractableLadder currentLadder = null;
+
     private enum HoverState { None, Open, Use }
     private HoverState currentHoverState = HoverState.None;
+    private bool isHoveringLadder = false;
 
     void Start()
     {
@@ -115,6 +119,20 @@ public class FirstPersonController : MonoBehaviour
             return;
         }
 
+        bool isClimbing = currentLadder != null && currentLadder.IsPlayerClimbing();
+        if (isClimbing)
+        {
+            // Player can't jump or crouch on ladder
+            jumpPressed = false;
+            crouchPressed = false;
+
+            // Prevent normal movement while climbing (but allow camera look processing below)
+            moveInput = Vector2.zero;
+
+            // Prevent external gravity from affecting the player while ladder handles vertical movement
+            if (playerVelocity.y < 0f) playerVelocity.y = 0f;
+        }
+
         isGrounded = controller.isGrounded;
         if (isGrounded && playerVelocity.y < 0) { playerVelocity.y = -2f; }
         
@@ -127,15 +145,18 @@ public class FirstPersonController : MonoBehaviour
         Vector3 moveDirection = transform.right * moveInput.x + transform.forward * moveInput.y;
         controller.Move(moveDirection * currentSpeed * Time.deltaTime);
 
-        if (heldDoor == null && heldValve == null) {
-            if (jumpPressed && isGrounded && !isCrouching) {
-                playerVelocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
-                jumpPressed = false; 
+        if (!isClimbing)
+        {
+            if (heldDoor == null && heldValve == null) {
+                if (jumpPressed && isGrounded && !isCrouching) {
+                    playerVelocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+                    jumpPressed = false; 
+                }
             }
-        }
 
-        playerVelocity.y += gravity * Time.deltaTime;
-        controller.Move(playerVelocity * Time.deltaTime);
+            playerVelocity.y += gravity * Time.deltaTime;
+            controller.Move(playerVelocity * Time.deltaTime);
+        }
 
         if (PauseMenu.GameIsPaused) return;
         if (inventory != null && inventory.isOpen) return;
@@ -226,9 +247,16 @@ public class FirstPersonController : MonoBehaviour
     void CheckInteractable()
     {
         currentHoverState = HoverState.None;
+        isHoveringLadder = false;
         
+        if (currentLadder != null && currentLadder.IsPlayerClimbing())
+        {
+            currentHoverState = HoverState.Use; // Show interact cursor for dismount
+            return;
+        }
+
         if (currentlyHeldItem != null || heldDoor != null || heldValve != null) return;
-        
+
         Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
         RaycastHit hit;
 
@@ -244,7 +272,16 @@ public class FirstPersonController : MonoBehaviour
                 }
                 return;
             }
-            
+
+            // Prioritize ladder detection so we can show a ladder-specific crosshair
+            InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
+            if (ladder != null)
+            {
+                currentHoverState = HoverState.Open;
+                isHoveringLadder = true;
+                return;
+            }
+
             if (hit.collider.GetComponent<PickableItem>() != null ||
                 hit.collider.GetComponentInParent<InteractableDoor>() != null ||
                 hit.collider.GetComponentInParent<InteractableValve>() != null)
@@ -347,11 +384,23 @@ public class FirstPersonController : MonoBehaviour
         }
         else if (currentHoverState == HoverState.Open)
         {
-            textureToDraw = hoverCrosshair; 
+            if (isHoveringLadder && ladderHoverCrosshair != null)
+            {
+                textureToDraw = ladderHoverCrosshair;
+            }
+            else
+            {
+                textureToDraw = hoverCrosshair; 
+            }
         }
         else if (currentHoverState == HoverState.Use)
         {
-            textureToDraw = useCrosshair; 
+            // Hide the 'use' crosshair while the player is climbing the ladder
+            bool isClimbing = currentLadder != null && currentLadder.IsPlayerClimbing();
+            if (!isClimbing)
+            {
+                textureToDraw = useCrosshair;
+            }
         }
 
         if (textureToDraw != null)
@@ -474,6 +523,13 @@ public class FirstPersonController : MonoBehaviour
             if (PauseMenu.GameIsPaused) return;
             if (inventory != null && inventory.isOpen) return;
 
+            if (currentLadder != null && currentLadder.IsPlayerClimbing())
+            {
+                currentLadder.TryDismount();
+                currentLadder = null;
+                return;
+            }
+
             PickableItem stagedItem = inventory != null ? inventory.itemToUse : null;
             Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
             RaycastHit hit;
@@ -567,6 +623,14 @@ public class FirstPersonController : MonoBehaviour
 
                 SavePoint savePoint = hit.collider.GetComponent<SavePoint>();
                 if (savePoint != null) { savePoint.Interact(); return; }
+
+                InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
+                if (ladder != null) 
+                { 
+                    currentLadder = ladder;
+                    ladder.StartClimbing(this); 
+                    return; 
+                }
             }
         }
     }
