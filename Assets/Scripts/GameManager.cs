@@ -39,22 +39,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // ----------------------
-    // Game Over & Menus
-    // ----------------------
-
     public void TriggerGameOver()
     {
         isGameOver = true;
 
-        // 1. Show the cursor (Unlocks the cursor for menu navigation)
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = false; 
 
-        // 2. Pause the game physics/time
         Time.timeScale = 0f;
 
-        // 3. Show the Menu
         if (gameOverUI != null)
         {
             gameOverUI.SetActive(true);
@@ -71,20 +64,14 @@ public class GameManager : MonoBehaviour
         Application.Quit();
     }
 
-    // ----------------------
-    // Saving
-    // ----------------------
-
     public void SaveGame()
     {
-        // Prevent saving if dead
         if (isGameOver) return; 
 
         BinaryFormatter bf = new BinaryFormatter();
         FileStream file = File.Create(savePath);
         SaveData data = new SaveData();
 
-        // 1. Save Player Data
         if (fpc != null)
         {
             Transform playerT = fpc.transform;
@@ -92,7 +79,6 @@ public class GameManager : MonoBehaviour
             data.playerPosition[1] = playerT.position.y;
             data.playerPosition[2] = playerT.position.z;
             
-            // Player rotation only saves the world rotation (yaw), pitch is reset on load
             data.playerRotation[0] = playerT.rotation.x;
             data.playerRotation[1] = playerT.rotation.y;
             data.playerRotation[2] = playerT.rotation.z;
@@ -101,13 +87,11 @@ public class GameManager : MonoBehaviour
             data.playerHealth = fpc.currentHealth;
         }
 
-        // 2. Save Inventory Data
         if (inventorySystem != null)
         {
             data.savedInventoryItems = inventorySystem.GetSavedItemsData();
         }
 
-        // 3. Save Door States
         InteractableDoor[] doors = FindObjectsOfType<InteractableDoor>();
         foreach (InteractableDoor door in doors)
         {
@@ -119,7 +103,17 @@ public class GameManager : MonoBehaviour
             data.doorStates.Add(door.GetSaveState());
         }
 
-        // 4. Save World Items
+        InteractableValve[] valves = FindObjectsOfType<InteractableValve>();
+        foreach (InteractableValve valve in valves)
+        {
+            if (string.IsNullOrEmpty(valve.valveID))
+            {
+                Debug.LogError($"Valve '{valve.gameObject.name}' is missing a unique 'Valve ID'. Skipping save for this object.");
+                continue;
+            }
+            data.valveStates.Add(valve.GetSaveState());
+        }
+
         if (inventorySystem != null)
         {
             foreach (var item in inventorySystem.GetCollectedItems()) 
@@ -131,7 +125,6 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 5. Save Scene Data
         data.sceneIndex = SceneManager.GetActiveScene().buildIndex;
 
         bf.Serialize(file, data);
@@ -139,25 +132,17 @@ public class GameManager : MonoBehaviour
 
         ShowStatus("Game Saved!", 2f);
     }
-
-    // ----------------------
-    // Loading & Respawning
-    // ----------------------
     
     public void Respawn()
     {
         isGameOver = false;
 
-        // 1. Hide the Game Over Menu
         if (gameOverUI != null) gameOverUI.SetActive(false);
 
-        // 2. Unpause time so the game can run after loading
         Time.timeScale = 1f;
 
-        // 3. Lock the cursor
         if (fpc != null) fpc.LockCursor();
 
-        // 4. Load the last save
         LoadGame();
     }
 
@@ -207,7 +192,6 @@ public class GameManager : MonoBehaviour
 
     private void ApplyLoadData(SaveData data)
     {
-        // 1. Load Player Data
         if (fpc != null)
         {
             Vector3 position = new Vector3(
@@ -217,10 +201,8 @@ public class GameManager : MonoBehaviour
                 data.playerRotation[0], data.playerRotation[1], data.playerRotation[2], data.playerRotation[3]
             );
 
-            // Use the updated LoadState which now resets camera pitch
             fpc.LoadState(position, rotation);
 
-            // If the player died, reset health to max upon loading
             if (data.playerHealth <= 0) 
             {
                 fpc.currentHealth = fpc.maxHealth; 
@@ -231,13 +213,11 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 2. Load Inventory Data
         if (inventorySystem != null)
         {
             inventorySystem.LoadItems(data.savedInventoryItems);
         }
         
-        // 3. Load Door States
         InteractableDoor[] doors = FindObjectsOfType<InteractableDoor>();
         foreach (InteractableDoor door in doors)
         {
@@ -248,7 +228,16 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 4. Load World Item States
+        InteractableValve[] valves = FindObjectsOfType<InteractableValve>();
+        foreach (InteractableValve valve in valves)
+        {
+            SaveData.SavedValveState savedState = data.valveStates.FirstOrDefault(s => s.valveID == valve.valveID);
+            if (!string.IsNullOrEmpty(savedState.valveID))
+            {
+                valve.LoadState(savedState);
+            }
+        }
+
         PickableItem[] worldItems = FindObjectsOfType<PickableItem>();
         
         foreach (PickableItem worldItem in worldItems)

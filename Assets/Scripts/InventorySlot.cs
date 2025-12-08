@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// NOTE: This component should be attached to the Inventory Slot UI Prefab.
 public class InventorySlot : MonoBehaviour
 {
     [Header("UI References")]
@@ -11,7 +10,6 @@ public class InventorySlot : MonoBehaviour
 
     private PickableItem currentItem;
 
-    // --- NEW: Ensure the highlight is off on Start ---
     void Start()
     {
         if (selectionHighlight != null)
@@ -19,7 +17,6 @@ public class InventorySlot : MonoBehaviour
             selectionHighlight.enabled = false;
         }
     }
-    // --- END NEW ---
 
     public void SetItem(PickableItem item)
     {
@@ -40,7 +37,6 @@ public class InventorySlot : MonoBehaviour
     {
         if (selectionHighlight != null)
         {
-            // This line controls whether the highlight image is visible.
             selectionHighlight.enabled = isSelected;
         }
     }

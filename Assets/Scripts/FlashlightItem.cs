@@ -21,11 +21,8 @@ public class FlashlightItem : PickableItem
         
         if (currentBatteryLife <= 0) currentBatteryLife = maxBatteryLife;
 
-        // Ensure the light source is disabled at startup, but leave the mesh visible
-        // so the player can see and pick up the item in the world.
         if (lightSource != null) lightSource.enabled = false;
         
-        // REMOVED: if (flashlightMesh != null) flashlightMesh.SetActive(false);
     }
     
     void Update()
@@ -38,7 +35,6 @@ public class FlashlightItem : PickableItem
             if (currentBatteryLife <= 0f)
             {
                 ToggleLight(false);
-                // Optional: Play flicker sound here
             }
         }
     }
@@ -54,10 +50,8 @@ public class FlashlightItem : PickableItem
             isLightOn = isOn;
         }
         
-        // Toggle the Light Component
         if (lightSource != null) lightSource.enabled = isLightOn;
         
-        // Toggle the 3D Model Visibility (This handles the 'invisible when off in hand' requirement)
         if (flashlightMesh != null) flashlightMesh.SetActive(isLightOn);
         
         return isLightOn;

@@ -8,11 +8,8 @@ public class SavePoint : MonoBehaviour
         
         if (GameManager.Instance != null)
         {
-            // 1. Perform the Save
             GameManager.Instance.SaveGame();
             
-            // 2. Find the Inventory System to use its UI Feedback
-            // (We use FindFirstObjectByType because there should only be one player/inventory)
             InventorySystem inventory = FindFirstObjectByType<InventorySystem>();
             
             if (inventory != null)
@@ -21,7 +18,6 @@ public class SavePoint : MonoBehaviour
             }
             else
             {
-                // Fallback if inventory isn't found (e.g., pure console log)
                 Debug.Log("Game Saved (Inventory UI not found)");
             }
         }

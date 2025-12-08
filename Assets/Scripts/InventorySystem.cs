@@ -24,7 +24,6 @@ public class InventorySystem : MonoBehaviour
     public float doubleClickTime = 0.3f; 
 
     [Header("Dependencies")]
-    // This controller now manages both Flashlight and Glowstick
     public FlashlightController flashlightController; 
 
     public bool isOpen = false; 
@@ -33,23 +32,20 @@ public class InventorySystem : MonoBehaviour
     private List<InventorySlot> activeSlots = new List<InventorySlot>();
     private PickableItem markedItem = null; 
     
-    // --- Double-Click State ---
     private float lastClickTime = 0f;
-    // --------------------------
     
     [HideInInspector] public PickableItem itemToUse = null; 
 
+    // Initialize the inventory UI on game start
     void Start()
     {
         if (inventoryUI != null) inventoryUI.SetActive(false);
         if (descriptionDisplay != null) descriptionDisplay.text = "";
         if (feedbackText != null) feedbackText.text = "";
         
-        // Ensure buttons are hidden on Start
         if (discardButton != null) discardButton.SetActive(false);
         if (useButton != null) useButton.SetActive(false); 
 
-        // Add listener for the Use button
         if (useButton != null)
         {
             Button useBtn = useButton.GetComponent<Button>();
@@ -59,17 +55,18 @@ public class InventorySystem : MonoBehaviour
         if (playerCamera == null) playerCamera = Camera.main.transform;
     }
 
+    // Opens or closes the inventory UI based on current state
     public void ToggleInventory()
     {
         if (isOpen) CloseInventory(); else OpenInventory();
     }
 
+    // Opens the inventory UI and unlocks the cursor
     void OpenInventory()
     {
         isOpen = true;
         inventoryUI.SetActive(true);
-        Cursor.lockState = CursorLockMode.None; // Unlock cursor
-        // Cursor.visible is now managed by FirstPersonController.OnGUI
+        Cursor.lockState = CursorLockMode.None;
         if (freezeTimeWhenOpen) Time.timeScale = 0f;
         
         if (descriptionDisplay != null) descriptionDisplay.text = "";
@@ -81,12 +78,12 @@ public class InventorySystem : MonoBehaviour
         RefreshUI();
     }
 
+    // Closes the inventory UI and locks the cursor
     public void CloseInventory()
     {
         inventoryUI.SetActive(false);
         isOpen = false;
-        Cursor.lockState = CursorLockMode.Locked; // Lock cursor
-        // Cursor.visible is now managed by FirstPersonController.OnGUI
+        Cursor.lockState = CursorLockMode.Locked;
         
         markedItem = null;
         if (descriptionDisplay != null) descriptionDisplay.text = "";
@@ -96,6 +93,7 @@ public class InventorySystem : MonoBehaviour
         if (freezeTimeWhenOpen) Time.timeScale = 1f;
     }
 
+    // Adds an item to the inventory and deactivates it in the world
     public bool AddItem(PickableItem item)
     {
         if (collectedItems.Count >= maxSlots)
@@ -104,16 +102,13 @@ public class InventorySystem : MonoBehaviour
             return false; 
         }
         
-        // Check if the item being picked up is currently equipped and unequip it.
         if (flashlightController != null && flashlightController.GetEquippedItem() == item)
         {
-            // Using the generalized unequip method
             flashlightController.UnequipCurrentLight(); 
         }
 
         collectedItems.Add(item);
         
-        // Ensure the physical object is hidden after pickup
         item.gameObject.SetActive(false);
 
         if (isOpen) RefreshUI(); 
@@ -122,21 +117,19 @@ public class InventorySystem : MonoBehaviour
         return true; 
     }
 
+    // Throws the currently selected item out of inventory into the world
     public void DiscardMarkedItem()
     {
         if (markedItem == null) return;
 
-        // Safeguard Logic
         if (!markedItem.canBeDiscarded)
         {
             ShowFeedback($"Cannot discard {markedItem.itemName}. It is a key item.");
             return; 
         }
 
-        // Handle unequip logic for both Flashlight and Glowstick if they are about to be discarded
         if (flashlightController != null && flashlightController.GetEquippedItem() == markedItem)
         {
-            // Using the generalized unequip method
             flashlightController.UnequipCurrentLight(); 
         }
 
@@ -165,6 +158,7 @@ public class InventorySystem : MonoBehaviour
         RefreshUI();
     }
 
+    // Rebuilds all inventory slot UI elements to match current items
     void RefreshUI()
     {
         foreach (Transform child in itemsContainer) Destroy(child.gameObject);
@@ -184,41 +178,29 @@ public class InventorySystem : MonoBehaviour
                 if (btn == null) btn = slotObj.GetComponent<Button>();
                 if (btn != null) 
                 {
-                    // Pass the item reference to the click listener
                     btn.onClick.AddListener(() => OnSlotClicked(item, slotScript));
                 }
             }
         }
     }
 
+    // Handles clicking on an inventory slot (selection and double-click to use)
     void OnSlotClicked(PickableItem item, InventorySlot clickedSlot)
     {
-        // --- DOUBLE-CLICK DETECTION LOGIC ---
         if (markedItem == item && Time.unscaledTime - lastClickTime < doubleClickTime)
         {
-            // Double-click detected. Reset timer immediately.
             lastClickTime = 0f; 
 
             if (item.canBeUsedFromInventory)
             {
                  PerformItemAction(item); 
-                 // If action is performed (e.g., key used, item consumed), the inventory closes,
-                 // so we stop execution here.
                  return;
             }
 
-            // If the item is NOT usable from inventory (like the flashlight), we don't return.
-            // We fall through to the single-click logic below, which keeps it selected/highlighted.
         }
-        // ------------------------------------
-
-        // --- Single click logic (or non-usable double-click fall-through) ---
-
-        // 1. Select the item and update description/buttons
         markedItem = item;
         if (descriptionDisplay != null) descriptionDisplay.text = item.itemDescription;
         
-        // Button Visibility Logic
         if (discardButton != null)
         {
             discardButton.SetActive(item.canBeDiscarded);
@@ -229,19 +211,18 @@ public class InventorySystem : MonoBehaviour
             useButton.SetActive(item.canBeUsedFromInventory); 
         }
 
-        // 2. Update all slot highlights
         foreach (InventorySlot slot in activeSlots)
         {
             slot.SetSelected(slot == clickedSlot);
         }
 
-        // 3. Set the time for the next potential double-click check (Only if it was NOT a double-click just now)
         if (Time.unscaledTime - lastClickTime >= doubleClickTime)
         {
             lastClickTime = Time.unscaledTime;
         }
     }
     
+    // Called when the Use button is clicked in the inventory UI
     public void OnUseClicked()
     {
         if (markedItem != null && markedItem.canBeUsedFromInventory)
@@ -250,30 +231,21 @@ public class InventorySystem : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Central logic for using an item, handling equip/consume/defer actions.
-    /// This is called by the 'Use' button and the double-click event.
-    /// </summary>
+    // Executes the use action for an item (equip flashlight, use key, etc.)
     public void PerformItemAction(PickableItem item)
     {
         
         if (item is FlashlightItem flashlight && flashlightController != null)
         {
-            // --- Flashlight Equipping Logic ---
-            
-            // Check if the Flashlight is already the equipped item
             if (flashlightController.GetEquippedItem() == flashlight)
             {
-                // If equipped, put it away (unequip)
                 flashlightController.UnequipCurrentLight();
                 ShowFeedback($"{item.itemName} put away.");
             }
             else
             {
-                // To equip: 1. Always unequip the current item (clears the slot and turns off any competing light).
                 flashlightController.UnequipCurrentLight(); 
                 
-                // 2. Equip the new Flashlight
                 flashlightController.EquipLightItem(flashlight.GetComponent<PickableItem>());
                 ShowFeedback($"{item.itemName} equipped. Press F to toggle light.");
             }
@@ -283,17 +255,12 @@ public class InventorySystem : MonoBehaviour
 
         if (item is GlowstickItem glowstick && flashlightController != null)
         {
-            // --- Glowstick Equipping Logic ---
-            
-            // Check if the Glowstick is already the equipped item
             if (flashlightController.GetEquippedItem() == glowstick)
             {
-                // If equipped, toggle its light state (Glowstick vs. Flashlight exclusivity enforced by FPC)
                 bool isNowOn = !glowstick.IsOn();
                 
                 if (isNowOn)
                 {
-                    // If turning ON, ensure any equipped Flashlight is manually turned off
                     FlashlightItem flItem = flashlightController.GetEquippedItem()?.GetComponent<FlashlightItem>(); 
                     if (flItem != null && flItem.IsOn())
                     {
@@ -306,10 +273,8 @@ public class InventorySystem : MonoBehaviour
             }
             else
             {
-                // To equip: 1. Always unequip the current item (clears the slot and turns off any competing light).
                 flashlightController.UnequipCurrentLight(); 
                 
-                // 2. Equip the new Glowstick and turn it ON
                 flashlightController.EquipLightItem(glowstick.GetComponent<PickableItem>());
                 glowstick.ToggleLight(true); 
                 ShowFeedback($"{item.itemName} equipped and activated. Press G to toggle light.");
@@ -318,20 +283,18 @@ public class InventorySystem : MonoBehaviour
             return;
         }
 
-        // 2. Handle Immediate Use/Consumption (Uses the virtual OnUse method from PickableItem)
         if (item.OnUse(this)) 
         {
-            // Item consumed itself
             CloseInventory();
             return;
         }
 
-        // 3. Fallback to deferred interaction (key/object that needs raycast)
         itemToUse = item;
         CloseInventory();
         ShowFeedback($"Ready to use: {itemToUse.itemName}. Now look at an object and press [Interact]!");
     }
     
+    // Removes and destroys an item from inventory after it's been consumed/used
     public void ConsumeItem(PickableItem item)
     {
         if (collectedItems.Contains(item))
@@ -347,6 +310,7 @@ public class InventorySystem : MonoBehaviour
         RefreshUI(); 
     }
 
+    // Displays a temporary feedback message to the player
     public void ShowFeedback(string message)
     {
         if (feedbackText != null)
@@ -361,23 +325,20 @@ public class InventorySystem : MonoBehaviour
         }
     }
 
+    // Coroutine that hides feedback text after a delay
     IEnumerator HideFeedbackAfterDelay(float delay)
     {
         yield return new WaitForSecondsRealtime(delay); 
         if (feedbackText != null) feedbackText = null;
     }
     
-    /// <summary>
-    /// Finds and returns the first *unequipped* FlashlightItem in the inventory list.
-    /// </summary>
+    // Searches inventory for an unequipped flashlight item
     public FlashlightItem FindFlashlight()
     {
-        // Finds an *unequipped* flashlight in the inventory
         foreach (var item in collectedItems)
         {
             if (item is FlashlightItem flashlight)
             {
-                // Check if the flashlight is NOT currently equipped in the light slot
                 if (flashlightController == null || flashlightController.GetEquippedItem() != flashlight)
                 {
                     return flashlight;
@@ -387,17 +348,13 @@ public class InventorySystem : MonoBehaviour
         return null;
     }
 
-    /// <summary>
-    /// Finds and returns the first *unequipped* GlowstickItem in the inventory list.
-    /// </summary>
+    // Searches inventory for an unequipped glowstick item
     public GlowstickItem FindGlowstick()
     {
-        // Finds an *unequipped* glowstick in the inventory
         foreach (var item in collectedItems)
         {
             if (item is GlowstickItem glowstick)
             {
-                 // Check if the glowstick is NOT currently equipped in the light slot
                 if (flashlightController == null || flashlightController.GetEquippedItem() != glowstick)
                 {
                     return glowstick;
@@ -407,18 +364,13 @@ public class InventorySystem : MonoBehaviour
         return null;
     }
 
-    // --- SAVE/LOAD METHODS ---
-    
-    /// <summary>
-    /// Returns the live list of PickableItem instances currently held in the inventory.
-    /// This is used by the GameManager during saving to collect the unique 'worldItemID' 
-    /// from each instance for world state cleanup upon loading.
-    /// </summary>
-    public List<PickableItem> GetCollectedItems() // <--- This line fixes the InventorySystem error.
+    // Returns the list of all items currently in inventory
+    public List<PickableItem> GetCollectedItems()
     {
         return collectedItems;
     }
 
+    // Converts current inventory into save data format for game saving
     public List<SaveData.SavedInventoryItem> GetSavedItemsData()
     {
         List<SaveData.SavedInventoryItem> savedItems = new List<SaveData.SavedInventoryItem>();
@@ -433,24 +385,28 @@ public class InventorySystem : MonoBehaviour
         return savedItems;
     }
 
+    // Loads inventory items from save data by instantiating prefabs from Resources
     public void LoadItems(List<SaveData.SavedInventoryItem> savedItemData)
     {
         Debug.Log($"[INVENTORY LOAD START] Attempting to load {savedItemData.Count} items.");
         
-        // 1. Unequip any light item (since the old references are about to be destroyed)
         if (flashlightController != null)
         {
-            // Use the generalized unequip method
             flashlightController.UnequipCurrentLight(); 
         }
 
-        // 2. Clean up all existing, instantiated inventory objects
+        // Only destroy items that are currently in the inventory (items we're about to replace)
+        // Don't destroy items that are in the world scene
         foreach (var item in collectedItems)
         {
-            // Crucial: Destroy the objects instantiated by the previous run/load
             if (item != null && item.gameObject != null) 
             {
-                Destroy(item.gameObject);
+                // Only destroy if this item is actually in our inventory (not in world)
+                // Check if item was inactive (inventory items are typically inactive)
+                if (!item.gameObject.activeSelf || item.gameObject.name.Contains("INVENTORY_ITEM_HIDDEN"))
+                {
+                    Destroy(item.gameObject);
+                }
             }
         }
         collectedItems.Clear();
@@ -460,7 +416,6 @@ public class InventorySystem : MonoBehaviour
         if (discardButton != null) discardButton.SetActive(false);
         if (useButton != null) useButton.SetActive(false); 
 
-        // 3. Re-instantiate items from saved data
         foreach (SaveData.SavedInventoryItem savedItem in savedItemData)
         {
             string path = $"Items/{savedItem.itemName}";
@@ -470,9 +425,8 @@ public class InventorySystem : MonoBehaviour
             {
                 GameObject itemObj = Instantiate(itemPrefab);
                 
-                // Hide and position far away to ensure no interaction
                 itemObj.transform.SetParent(null);
-                itemObj.transform.position = Vector3.zero; // Or far below the map
+                itemObj.transform.position = Vector3.zero;
                 itemObj.transform.rotation = Quaternion.identity;
                 itemObj.name = $"INVENTORY_ITEM_HIDDEN_{savedItem.itemName}";
                 
@@ -481,11 +435,9 @@ public class InventorySystem : MonoBehaviour
                 
                 if (pickable != null)
                 {
-                    // Apply saved properties (ID and discardability)
                     pickable.itemId = savedItem.itemId;
                     pickable.canBeDiscarded = savedItem.canBeDiscarded;
 
-                    // Ensure all light items are off on load
                     if (pickable is FlashlightItem flashlight)
                     {
                         flashlight.ToggleLight(false);

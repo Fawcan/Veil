@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Events;
 
 [RequireComponent(typeof(Collider))]
 public class DestructibleObject : MonoBehaviour, IDestructible
@@ -9,26 +10,32 @@ public class DestructibleObject : MonoBehaviour, IDestructible
     [Header("Effects")]
     [Tooltip("The object to show when the window is destroyed (e.g., shattered pieces).")]
     public GameObject destroyedPrefab;
+
+    [Header("Events")]
+    [Tooltip("Event triggered when this object is destroyed.")]
+    public UnityEvent onDestroyed;
     
     public float DestructionThreshold => destructionThreshold;
 
+    private float accumulatedDamage = 0f;
+
     void OnCollisionEnter(Collision collision)
     {
-        // Check if the colliding object is a PickableItem with a Rigidbody (i.e., thrown)
         PickableItem item = collision.gameObject.GetComponent<PickableItem>();
         Rigidbody rb = collision.rigidbody;
 
         if (item != null && rb != null)
         {
-            // Calculate the kinetic energy of the incoming item (0.5 * Mass * Velocity^2)
-            // We use the square of the magnitude of the velocity
             float kineticEnergy = 0.5f * rb.mass * rb.linearVelocity.sqrMagnitude;
             
-            Debug.Log($"Hit detected! Item: {item.itemName}, Energy: {kineticEnergy} vs Threshold: {destructionThreshold}");
+            // Accumulate damage instead of requiring it all in one hit
+            accumulatedDamage += kineticEnergy;
+            
+            Debug.Log($"Hit detected! Item: {item.itemName}, Energy: {kineticEnergy}, Total Damage: {accumulatedDamage}/{destructionThreshold}");
 
-            if (kineticEnergy >= destructionThreshold)
+            if (accumulatedDamage >= destructionThreshold)
             {
-                OnSmashHit(collision, kineticEnergy);
+                OnSmashHit(collision, accumulatedDamage);
             }
         }
     }
@@ -37,16 +44,16 @@ public class DestructibleObject : MonoBehaviour, IDestructible
     {
         Debug.Log("Window Smashed!");
         
-        // 1. Instantiate destruction effect
         if (destroyedPrefab != null)
         {
-            // Spawn the shattered pieces at the hit location
             Instantiate(destroyedPrefab, transform.position, transform.rotation);
         }
 
+        // Trigger completion event
+        onDestroyed?.Invoke();
+
         // 2. Optional: Add particle effects or sound here
 
-        // 3. Destroy the original window object
         Destroy(gameObject);
     }
 }

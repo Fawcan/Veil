@@ -6,9 +6,9 @@ using System.Text;
 
 public static class SaveSystem
 {
-    private static readonly string savePath = Application.persistentDataPath + "/game_save.veil"; // .veil is just a cool extension name
+    private static readonly string savePath = Application.persistentDataPath + "/game_save.veil";
     
-    // ⚠️ IMPORTANT: In a real commercial game, manage these keys more securely!
+    // ⚠️ IMPORTANT: Change how this works later.
     private static readonly string encryptionKey = "1234567890123456"; // Must be 16 chars
     private static readonly string initializationVector = "1234567890123456"; // Must be 16 chars
 

@@ -55,13 +55,12 @@ public class InteractableLadder : MonoBehaviour
     private Coroutine snapCoroutine;
     private bool isPlayerOnLadder = false;
     private InventorySystem inventorySystem;
-    private UnityEngine.InputSystem.PlayerInput playerInput; // Add reference to PlayerInput
+    private UnityEngine.InputSystem.PlayerInput playerInput;
 
     void Start()
     {
         inventorySystem = FindFirstObjectByType<InventorySystem>();
         
-        // Auto-calculate boundaries if dismount points are set
         if (topDismountPoint != null)
         {
             maxClimbHeight = topDismountPoint.position.y;
@@ -81,38 +80,30 @@ public class InteractableLadder : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Called by FirstPersonController when player interacts with the ladder.
     public void StartClimbing(FirstPersonController player)
     {
         if (isPlayerOnLadder) return;
 
         attachedPlayer = player;
         playerController = player.GetComponent<CharacterController>();
-        playerInput = player.GetComponent<UnityEngine.InputSystem.PlayerInput>(); // Get PlayerInput
+        playerInput = player.GetComponent<UnityEngine.InputSystem.PlayerInput>();
         isPlayerOnLadder = true;
 
-        // Disable normal player movement while repositioning
         if (playerController != null) playerController.enabled = false;
 
-        // Snap the player to just outside the ladder's collider so they are not inside it.
         Collider ladderCollider = GetComponent<Collider>() ?? GetComponentInChildren<Collider>();
         Vector3 targetPos = player.transform.position;
         if (ladderCollider != null)
         {
-            // Snap to the collider's world-space center but offset outward so the player isn't inside the mesh.
             Vector3 colliderCenter = ladderCollider.bounds.center;
 
-            // Use the ladder's forward direction (or the provided reference) to determine the front face.
             Vector3 ladderForward = (forwardReference != null) ? forwardReference.forward : transform.forward;
             ladderForward.y = 0f;
             if (ladderForward.sqrMagnitude < 0.0001f) ladderForward = Vector3.forward;
             ladderForward.Normalize();
 
-            // Optionally flip which side is considered the front
             if (flipForward) ladderForward = -ladderForward;
 
-            // We want the player to be positioned in front of the ladder, so offset opposite the forward vector.
             Vector3 dir = -ladderForward;
 
             float radius = (playerController != null) ? playerController.radius : 0.5f;
@@ -124,13 +115,11 @@ public class InteractableLadder : MonoBehaviour
         }
         else
         {
-            // Fallback: center on ladder X/Z
             Vector3 snapPosition = transform.position;
             targetPos.x = snapPosition.x;
             targetPos.z = snapPosition.z;
         }
 
-        // Apply snap preserving player's Y
         if (snapCoroutine != null)
         {
             StopCoroutine(snapCoroutine);
@@ -139,7 +128,6 @@ public class InteractableLadder : MonoBehaviour
 
         if (smoothSnap)
         {
-            // Start coroutine to smoothly move & optionally rotate the player, controller will be re-enabled at the end
             snapCoroutine = StartCoroutine(SmoothSnapAndOrient(player, targetPos));
         }
         else
@@ -147,7 +135,6 @@ public class InteractableLadder : MonoBehaviour
             player.transform.position = targetPos;
             if (orientToLadder)
             {
-                // Orient to ladder forward (or forwardReference) so the player faces the intended front side
                 Vector3 ladderForward = (forwardReference != null) ? forwardReference.forward : transform.forward;
                 ladderForward.y = 0f;
                 if (ladderForward.sqrMagnitude > 0.0001f)
@@ -159,7 +146,6 @@ public class InteractableLadder : MonoBehaviour
                 }
             }
 
-            // Re-enable controller
             if (playerController != null) playerController.enabled = true;
         }
 
@@ -171,12 +157,8 @@ public class InteractableLadder : MonoBehaviour
         Debug.Log("Player attached to ladder.");
     }
 
-    /// <summary>
-    /// Handles the climbing movement while on the ladder.
-    /// </summary>
     void HandleClimbing()
     {
-        // Get vertical input from the new Input System
         float verticalInput = 0f;
         if (playerInput != null)
         {
@@ -184,13 +166,10 @@ public class InteractableLadder : MonoBehaviour
             verticalInput = moveInput.y;
         }
 
-        // Calculate new Y position
         float newY = attachedPlayer.transform.position.y + (verticalInput * climbSpeed * Time.deltaTime);
 
-        // Clamp to ladder boundaries
         newY = Mathf.Clamp(newY, minClimbHeight, maxClimbHeight);
 
-        // Apply the movement
         Vector3 newPosition = attachedPlayer.transform.position;
         newPosition.y = newY;
 
@@ -198,10 +177,8 @@ public class InteractableLadder : MonoBehaviour
         attachedPlayer.transform.position = newPosition;
         playerController.enabled = true;
 
-        // Check if player is near the top and can dismount
         if (Mathf.Abs(newY - maxClimbHeight) < topExitRange)
         {
-            // Player can press E again to exit at the top
         }
     }
 
@@ -214,7 +191,6 @@ public class InteractableLadder : MonoBehaviour
         Quaternion targetRot = startRot;
         if (orientToLadder)
         {
-            // Use ladder forward (or forwardReference) to determine facing direction
             Vector3 ladderForward = (forwardReference != null) ? forwardReference.forward : transform.forward;
             ladderForward.y = 0f;
             if (ladderForward.sqrMagnitude > 0.0001f)
@@ -224,7 +200,6 @@ public class InteractableLadder : MonoBehaviour
                 if (flipForward) ladderForward = -ladderForward;
 
                 targetRot = Quaternion.LookRotation(ladderForward, Vector3.up);
-                // Apply yaw offset so the player can be angled slightly relative to the ladder
                 targetRot *= Quaternion.Euler(0f, orientationOffset, 0f);
             }
         }
@@ -246,33 +221,23 @@ public class InteractableLadder : MonoBehaviour
         snapCoroutine = null;
     }
 
-    /// <summary>
-    /// Called when the player presses Interact (E) while on the ladder.
-    /// If at the top, dismounts. Otherwise, detaches normally.
-    /// </summary>
     public void TryDismount()
     {
         if (!isPlayerOnLadder || attachedPlayer == null) return;
 
-        // Check if player is near the top
         float currentY = attachedPlayer.transform.position.y;
         bool isAtTop = Mathf.Abs(currentY - maxClimbHeight) < topExitRange;
 
         if (isAtTop && topDismountPoint != null)
         {
-            // Dismount at the top position
             DismountAtTop();
         }
         else
         {
-            // Regular dismount (detach from ladder)
             StopClimbing();
         }
     }
 
-    /// <summary>
-    /// Dismounts the player at the top position.
-    /// </summary>
     void DismountAtTop()
     {
         if (topDismountPoint == null)
@@ -282,7 +247,6 @@ public class InteractableLadder : MonoBehaviour
             return;
         }
 
-        // Stop any snap coroutine to avoid conflicts
         if (snapCoroutine != null)
         {
             StopCoroutine(snapCoroutine);
@@ -291,10 +255,8 @@ public class InteractableLadder : MonoBehaviour
 
         playerController.enabled = false;
         attachedPlayer.transform.position = topDismountPoint.position;
-        //attachedPlayer.transform.rotation = topDismountPoint.rotation;
         playerController.enabled = true;
 
-        // Reset state
         isPlayerOnLadder = false;
         attachedPlayer = null;
         playerController = null;
@@ -307,14 +269,10 @@ public class InteractableLadder : MonoBehaviour
         Debug.Log("Player dismounted at top.");
     }
 
-    /// <summary>
-    /// Detaches the player from the ladder (normal dismount).
-    /// </summary>
     public void StopClimbing()
     {
         if (!isPlayerOnLadder) return;
 
-        // Stop any snap coroutine running
         if (snapCoroutine != null)
         {
             StopCoroutine(snapCoroutine);
@@ -333,9 +291,6 @@ public class InteractableLadder : MonoBehaviour
         Debug.Log("Player detached from ladder.");
     }
 
-    /// <summary>
-    /// Returns whether a player is currently on this ladder.
-    /// </summary>
     public bool IsPlayerClimbing()
     {
         return isPlayerOnLadder;
@@ -351,11 +306,9 @@ public class InteractableLadder : MonoBehaviour
             Bounds b = ladderCollider.bounds;
             center = b.center;
 
-            // Draw collider bounds
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireCube(b.center, b.size);
 
-            // Draw a small sphere at the center (snap target X/Z)
             Gizmos.color = Color.yellow;
             float sphereSize = Mathf.Min(Mathf.Max(b.size.x, b.size.z) * 0.03f, 0.25f);
             Gizmos.DrawSphere(b.center, sphereSize);
@@ -366,7 +319,6 @@ public class InteractableLadder : MonoBehaviour
             Gizmos.DrawWireCube(transform.position, Vector3.one * 0.5f);
         }
 
-        // Draw forward direction from center (use forwardReference if provided)
         Vector3 ladderForward = (forwardReference != null) ? forwardReference.forward : transform.forward;
         ladderForward.y = 0f;
         if (ladderForward.sqrMagnitude > 0.0001f)

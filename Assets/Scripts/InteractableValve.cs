@@ -5,6 +5,10 @@ using UnityEngine.Events;
 public class InteractableValve : MonoBehaviour
 {
     [Header("Valve Settings")]
+    [Tooltip("Unique identifier for this valve. Required for save/load.")]
+    public string valveID = "";
+    [Tooltip("If true, the valve cannot be interacted with.")]
+    public bool isLocked = false;
     [Tooltip("The axis to rotate around.")]
     public Axis rotationAxis = Axis.Z;
     [Tooltip("How fast the valve spins when dragging.")]
@@ -36,7 +40,12 @@ public class InteractableValve : MonoBehaviour
 
     public void StartInteract()
     {
-        if (!isComplete) isInteracting = true;
+        if (!isComplete && !isLocked) isInteracting = true;
+
+        if (isLocked)
+        {
+            Debug.Log("Valve is locked and cannot be interacted with.");
+        }
     }
 
     public void StopInteract()
@@ -46,29 +55,23 @@ public class InteractableValve : MonoBehaviour
 
     public void UpdateInteraction(float input)
     {
-        if (!isInteracting || isComplete) return;
+        if (!isInteracting || isComplete || isLocked) return;
 
-        // Rotate based on mouse input
-        // We flip the input if target is negative to ensure dragging 'right' always adds progress visually if desired
-        // But usually, simple addition works best: Right (+X) = Positive Angle, Left (-X) = Negative Angle.
         float rotationStep = input * sensitivity * 1f; 
         
         currentAngle += rotationStep;
 
-        // Clamp current angle so you can't turn past 0 (start) or Target (end)
         if (targetAngle > 0)
             currentAngle = Mathf.Clamp(currentAngle, 0, targetAngle);
         else
             currentAngle = Mathf.Clamp(currentAngle, targetAngle, 0);
 
-        // Apply Visual Rotation
         Vector3 axisVector = Vector3.forward;
         if (rotationAxis == Axis.X) axisVector = Vector3.right;
         if (rotationAxis == Axis.Y) axisVector = Vector3.up;
 
         transform.localRotation = initialRotation * Quaternion.AngleAxis(currentAngle, axisVector);
 
-        // Check for completion
         if (Mathf.Abs(currentAngle) >= Mathf.Abs(targetAngle))
         {
             CompleteValve();
@@ -80,8 +83,59 @@ public class InteractableValve : MonoBehaviour
         isComplete = true;
         isInteracting = false;
         Debug.Log("Valve Complete!");
-        onValveComplete.Invoke(); // Fires the event to unlock your hatch
-        visibleValve.gameObject.SetActive(false); // Hide the visible hatch
-        hiddenValve.gameObject.SetActive(true); // Show the hidden hatch
+        onValveComplete.Invoke(); 
+        visibleValve.gameObject.SetActive(false); 
+        hiddenValve.gameObject.SetActive(true); 
+    }
+
+    public SaveData.SavedValveState GetSaveState()
+    {
+        bool visibleActive = visibleValve != null && visibleValve.gameObject.activeSelf;
+        bool hiddenActive = hiddenValve != null && hiddenValve.gameObject.activeSelf;
+        return new SaveData.SavedValveState(valveID, currentAngle, isComplete, isLocked, visibleActive, hiddenActive);
+    }
+
+    public void LoadState(SaveData.SavedValveState state)
+    {
+        currentAngle = state.currentAngle;
+        isComplete = state.isComplete;
+        isLocked = state.isLocked;
+
+        Vector3 axisVector = Vector3.forward;
+        if (rotationAxis == Axis.X) axisVector = Vector3.right;
+        if (rotationAxis == Axis.Y) axisVector = Vector3.up;
+
+        transform.localRotation = initialRotation * Quaternion.AngleAxis(currentAngle, axisVector);
+
+        if (visibleValve != null) visibleValve.gameObject.SetActive(state.visibleValveActive);
+        if (hiddenValve != null) hiddenValve.gameObject.SetActive(state.hiddenValveActive);
+    }
+
+    /// <summary>
+    /// Locks the valve, preventing interaction. Can be called from Unity events.
+    /// </summary>
+    public void SetLocked(bool locked)
+    {
+        isLocked = locked;
+        if (locked)
+        {
+            isInteracting = false; // Stop any current interaction
+        }
+    }
+
+    /// <summary>
+    /// Unlocks the valve. Can be called from Unity events.
+    /// </summary>
+    public void Unlock()
+    {
+        SetLocked(false);
+    }
+
+    /// <summary>
+    /// Locks the valve. Can be called from Unity events.
+    /// </summary>
+    public void Lock()
+    {
+        SetLocked(true);
     }
 }

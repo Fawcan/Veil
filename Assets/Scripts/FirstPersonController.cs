@@ -4,9 +4,6 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonController : MonoBehaviour
 {
-    // Saved User Preferences:
-    // doorInteractSpeedMultiplier = 0.75f, interactionRange = 2f, and interactionBreakDistance = 3f.
-    
     [Header("Health System")]
     public float maxHealth = 100f;
     public float currentHealth;
@@ -19,7 +16,7 @@ public class FirstPersonController : MonoBehaviour
     [Header("Camera Look")]
     public Transform cameraTransform;
     [Tooltip("User-facing sensitivity scale (1-20). Internally scaled down for smooth movement.")]
-    public float sensitivityScale = 10.0f; // Default value for 1-20 scale
+    public float sensitivityScale = 10.0f;
     public bool isYInverted = false; 
 
     [Header("Crouching")]
@@ -31,18 +28,20 @@ public class FirstPersonController : MonoBehaviour
     public LayerMask obstacleMask;
     
     [Header("Interaction")]
-    public float interactionRange = 2f; // User Preferred Value: 2f
+    public float interactionRange = 2f;
     public float dropForce = 5f;
     [Tooltip("Force applied to an item when explicitly thrown/smashed.")]
-    public float smashForce = 20f; // Throwing force magnitude
+    public float smashForce = 20f;
     [Tooltip("Multiplier for movement speed while interacting with an object.")]
-    public float interactSpeedMultiplier = 0.75f; // User Preferred Value: 0.75f
+    public float interactSpeedMultiplier = 0.75f;
     [Tooltip("How far the player can move from a door before it's auto-released.")]
-    public float interactionBreakDistance = 3f; // User Preferred Value: 3f
-    
+    public float interactionBreakDistance = 3f;
+    private InteractableCable currentCable = null;
+
     [Header("Holding Physics")] 
     public float holdDistance = 1.5f; 
     public float holdForce = 500f; 
+    public Transform heldItemHolder;
 
     [Header("UI & Systems")]
     public PauseMenu pauseMenu; 
@@ -68,7 +67,7 @@ public class FirstPersonController : MonoBehaviour
     private CharacterController controller; 
     private Vector3 playerVelocity;
     private bool isGrounded;
-    private float xRotation = 0f; // Camera Pitch
+    private float xRotation = 0f;
 
     private Vector2 moveInput;
     private Vector2 lookInput;
@@ -82,19 +81,18 @@ public class FirstPersonController : MonoBehaviour
     private enum HoverState { None, Open, Use }
     private HoverState currentHoverState = HoverState.None;
     private bool isHoveringLadder = false;
-
     void Start()
     {
-        // Initialize Health
         currentHealth = maxHealth;
 
         controller = GetComponent<CharacterController>(); 
         if (cameraTransform == null) cameraTransform = Camera.main.transform;
+        if (heldItemHolder == null) heldItemHolder = cameraTransform;
+        standingHeight = controller.height;
         standingHeight = controller.height;
         standingCenter = controller.center;
         standingCameraY = cameraTransform.localPosition.y;
         
-        // Lock the cursor on game start
         LockCursor(); 
         
         if (controller != null) controller.enabled = true;
@@ -122,14 +120,11 @@ public class FirstPersonController : MonoBehaviour
         bool isClimbing = currentLadder != null && currentLadder.IsPlayerClimbing();
         if (isClimbing)
         {
-            // Player can't jump or crouch on ladder
             jumpPressed = false;
             crouchPressed = false;
 
-            // Prevent normal movement while climbing (but allow camera look processing below)
             moveInput = Vector2.zero;
 
-            // Prevent external gravity from affecting the player while ladder handles vertical movement
             if (playerVelocity.y < 0f) playerVelocity.y = 0f;
         }
 
@@ -251,7 +246,7 @@ public class FirstPersonController : MonoBehaviour
         
         if (currentLadder != null && currentLadder.IsPlayerClimbing())
         {
-            currentHoverState = HoverState.Use; // Show interact cursor for dismount
+            currentHoverState = HoverState.Use;
             return;
         }
 
@@ -273,7 +268,6 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
 
-            // Prioritize ladder detection so we can show a ladder-specific crosshair
             InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
             if (ladder != null)
             {
@@ -300,16 +294,13 @@ public class FirstPersonController : MonoBehaviour
 
     void OnGUI()
     {
-        // 1. --- DRAW IN-GAME HUD (HEALTH & BATTERY) ---
         if (GameManager.Instance == null || !GameManager.Instance.isGameOver) 
         {
-            // Display Health 
             GUIStyle healthStyle = new GUIStyle(GUI.skin.label);
             healthStyle.fontSize = 24;
             healthStyle.normal.textColor = currentHealth > 20 ? Color.white : Color.red;
             GUI.Label(new Rect(20, Screen.height - 50, 200, 40), $"Health: {Mathf.RoundToInt(currentHealth)}", healthStyle);
 
-            // Battery HUD Display
             PickableItem equippedLightItem = flashlightController != null ? flashlightController.GetEquippedItem() : null;
             if (equippedLightItem != null)
             {
@@ -342,8 +333,6 @@ public class FirstPersonController : MonoBehaviour
             }
         }
         
-        // 2. --- CUSTOM CURSOR DRAWING (Runs when cursor lock is NONE, for all menus) ---
-
         bool isCursorUnlocked = Cursor.lockState != CursorLockMode.Locked;
 
         if (isCursorUnlocked)
@@ -363,8 +352,6 @@ public class FirstPersonController : MonoBehaviour
             return; 
         } 
         
-        // 3. --- CROSSHAIR DRAWING (Runs only if cursor is locked and game is running) ---
-
         if (PauseMenu.GameIsPaused) return; 
         if (inventory != null && inventory.isOpen) return; 
 
@@ -395,7 +382,6 @@ public class FirstPersonController : MonoBehaviour
         }
         else if (currentHoverState == HoverState.Use)
         {
-            // Hide the 'use' crosshair while the player is climbing the ladder
             bool isClimbing = currentLadder != null && currentLadder.IsPlayerClimbing();
             if (!isClimbing)
             {
@@ -411,17 +397,12 @@ public class FirstPersonController : MonoBehaviour
         }
     }
     
-    // --- Camera Load State (Updated to remove pitch parameter and reset xRotation) ---
-    /// <summary>
-    /// Loads the player's position and rotation (yaw) and resets the camera pitch to 0.
-    /// </summary>
     public void LoadState(Vector3 position, Quaternion rotation) 
     { 
         controller.enabled = false; 
         transform.position = position; 
         transform.rotation = rotation; 
         
-        // Reset camera pitch to 0 degrees (straight forward)
         xRotation = 0f; 
         cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f); 
         
@@ -475,7 +456,6 @@ public class FirstPersonController : MonoBehaviour
     public void SetInvertY(bool inverted) { isYInverted = inverted; }
     public float GetCameraPitch() { return xRotation; }
 
-    // --- Input Action handlers ---
     public void OnMove(InputAction.CallbackContext context) { moveInput = context.ReadValue<Vector2>(); }
     public void OnLook(InputAction.CallbackContext context) { lookInput = context.ReadValue<Vector2>(); }
     public void OnCrouch(InputAction.CallbackContext context) { crouchPressed = context.ReadValueAsButton(); }
@@ -624,6 +604,18 @@ public class FirstPersonController : MonoBehaviour
                 SavePoint savePoint = hit.collider.GetComponent<SavePoint>();
                 if (savePoint != null) { savePoint.Interact(); return; }
 
+                // ------------------------------------------------------------------
+                // NEW: Cable Interaction Check
+                // ------------------------------------------------------------------
+                InteractableCable cable = hit.collider.GetComponentInParent<InteractableCable>();
+                if (cable != null)
+                {
+                    currentCable = cable;
+                    // Pass the transform that the cable end will attach to
+                    currentCable.StartInteract(heldItemHolder); 
+                    return; // Interaction handled
+                }
+
                 InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
                 if (ladder != null) 
                 { 
@@ -635,6 +627,22 @@ public class FirstPersonController : MonoBehaviour
         }
     }
     
+    public void ReleaseCurrentInteraction()
+    {
+        // 1. Release the Cable
+        if (currentCable != null)
+        {
+            currentCable.StopInteract(); // Tell the cable object to release its end
+            currentCable = null; 
+            
+            // You would use your InventorySystem's feedback display here
+            if (inventory != null)
+            {
+                inventory.ShowFeedback("Cable slipped from your grasp!");
+            }
+        }
+    }
+
     public void OnFlashlight(InputAction.CallbackContext context)
     {
         if (PauseMenu.GameIsPaused || (inventory != null && inventory.isOpen))

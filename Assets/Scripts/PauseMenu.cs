@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using TMPro; 
 using System.Collections.Generic; 
 using System.Linq; 
-using UnityEngine.Audio; // NEW: Required for AudioMixer
+using UnityEngine.Audio; 
 
 public class PauseMenu : MonoBehaviour
 {
@@ -15,11 +15,11 @@ public class PauseMenu : MonoBehaviour
     public GameObject settingsMenuUI;
 
     [Header("Audio")]
-    public AudioMixer masterMixer; // NEW: Reference to the Audio Mixer asset
+    public AudioMixer masterMixer; 
 
     [Header("Settings Controls - Gameplay")]
     public Slider volumeSlider; 
-    public Slider musicVolumeSlider; // NEW: Music Volume Slider
+    public Slider musicVolumeSlider; 
     public Slider lookSensitivitySlider; 
     public Slider fovSlider; 
     public TMP_Dropdown resolutionDropdown;
@@ -40,27 +40,23 @@ public class PauseMenu : MonoBehaviour
     private FirstPersonController controller;
     private Resolution[] resolutions; 
     
-    // Arrays to map Dropdown indices to actual Unity values
-    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144 }; // -1 = Unlimited
-    private readonly int[] antiAliasingValues = { 0, 2, 4, 8 }; // 0 = Off
+    private readonly int[] targetFrameRates = { -1, 30, 60, 120, 144, 170, 240 }; 
+    private readonly int[] antiAliasingValues = { 0, 2, 4, 8 }; 
 
     void Start()
     {
-        // Find the controller instance in the scene
         controller = FindFirstObjectByType<FirstPersonController>();
         if (controller == null)
         {
             Debug.LogError("FirstPersonController not found! Sensitivity/FOV won't work.");
         }
 
-        // Ensure menus are hidden at the start
         if (pauseMenuUI != null) pauseMenuUI.SetActive(false);
         if (settingsMenuUI != null) settingsMenuUI.SetActive(false);
         
         GameIsPaused = false;
         Time.timeScale = 1f;
 
-        // --- Initialize all UI and Settings ---
         InitializeResolutionDropdown();
         InitializeDisplayModeDropdown();
         InitializeVSyncToggle();
@@ -68,48 +64,40 @@ public class PauseMenu : MonoBehaviour
         InitializeQualityDropdown();
         InitializeAntiAliasingDropdown();
 
-        // Initialize Gameplay/Audio Settings (using default values from the last prompt)
         InitializeGameplaySettings();
         InitializeAudioSettings();
     }
 
-    // --- INITIALIZATION HELPERS ---
 
     void InitializeGameplaySettings()
     {
-        // 1. Master Volume (Default 75%)
         float defaultVolume = 0.75f;
         AudioListener.volume = defaultVolume;
         if (volumeSlider != null) volumeSlider.value = defaultVolume;
         SetVolume(defaultVolume); 
 
-        // 2. Field of View (Default 80)
         float defaultFOV = 80f;
         if (fovSlider != null) fovSlider.value = defaultFOV; 
         SetFOV(defaultFOV); 
 
-        // 3. Look Sensitivity (Default 10f)
         float defaultSensitivity = 10f;
         if (lookSensitivitySlider != null) lookSensitivitySlider.value = defaultSensitivity;
         SetLookSensitivity(defaultSensitivity); 
 
-        // 4. Invert Y (Default False)
         bool defaultInvertY = false;
         if (invertYToggle != null) invertYToggle.isOn = defaultInvertY;
         SetInvertY(defaultInvertY);
     }
     
-    // NEW: Initialization for Music Volume
     void InitializeAudioSettings()
     {
-        float defaultMusicVolume = 0.75f; // Default 75%
+        float defaultMusicVolume = 0.75f;
 
         if (musicVolumeSlider != null)
         {
             musicVolumeSlider.value = defaultMusicVolume;
         }
 
-        // Must call the setter to apply the default value to the mixer
         SetMusicVolume(defaultMusicVolume);
     }
 
@@ -166,7 +154,6 @@ public class PauseMenu : MonoBehaviour
     {
         if (vSyncToggle != null)
         {
-            // VSync is enabled if vSyncCount > 0
             vSyncToggle.isOn = QualitySettings.vSyncCount > 0;
         }
     }
@@ -209,10 +196,8 @@ public class PauseMenu : MonoBehaviour
         if (qualityDropdown != null)
         {
             qualityDropdown.ClearOptions();
-            // Get the names of the quality levels defined in Project Settings
             qualityDropdown.AddOptions(QualitySettings.names.ToList());
             
-            // Set the dropdown value to the current quality level index
             qualityDropdown.value = QualitySettings.GetQualityLevel();
             qualityDropdown.RefreshShownValue();
         }
@@ -237,9 +222,6 @@ public class PauseMenu : MonoBehaviour
             antiAliasingDropdown.RefreshShownValue();
         }
     }
-
-
-    // --- PAUSE MENU CONTROL ---
 
     public void TogglePause()
     {
@@ -294,10 +276,6 @@ public class PauseMenu : MonoBehaviour
         Application.Quit();
     }
 
-
-    // --- SETTINGS FUNCTIONS (Audio & Gameplay) ---
-    
-    // Master Volume
     public void SetVolume(float volume)
     {
         AudioListener.volume = volume;
@@ -307,12 +285,10 @@ public class PauseMenu : MonoBehaviour
         }
     }
 
-    // NEW: Music Volume
     public void SetMusicVolume(float volume)
     {
         if (masterMixer != null)
         {
-            // Converts linear slider value (0.0 to 1.0) to logarithmic decibels (-80.0 to 0.0)
             float dbVolume = volume > 0 ? Mathf.Log10(volume) * 20 : -80f;
             masterMixer.SetFloat("MusicVolume", dbVolume);
         }
@@ -344,10 +320,8 @@ public class PauseMenu : MonoBehaviour
 
     public void SetResolution(int resolutionIndex)
     {
-        // Get the Resolution struct from the array based on the dropdown index
         Resolution resolution = resolutions[resolutionIndex];
         
-        // Apply the new resolution, keeping the current fullscreen mode
         Screen.SetResolution(resolution.width, resolution.height, Screen.fullScreenMode);
     }
 
@@ -355,14 +329,13 @@ public class PauseMenu : MonoBehaviour
     {
         FullScreenMode mode = FullScreenMode.ExclusiveFullScreen;
 
-        if (modeIndex == 0) // Fullscreen
+        if (modeIndex == 0)
             mode = FullScreenMode.ExclusiveFullScreen;
-        else if (modeIndex == 1) // Windowed Fullscreen (Borderless)
+        else if (modeIndex == 1)
             mode = FullScreenMode.FullScreenWindow;
-        else if (modeIndex == 2) // Windowed
+        else if (modeIndex == 2)
             mode = FullScreenMode.Windowed;
 
-        // Apply the new display mode
         Screen.SetResolution(Screen.currentResolution.width, Screen.currentResolution.height, mode);
     }
 
@@ -374,30 +347,24 @@ public class PauseMenu : MonoBehaviour
         }
     }
 
-    // --- SETTINGS FUNCTIONS (Graphics) ---
-
     public void SetVSync(bool isVSyncOn)
     {
-        // 1 = VSync On (1 frame interval), 0 = VSync Off
         QualitySettings.vSyncCount = isVSyncOn ? 1 : 0;
     }
 
     public void SetTargetFrameRate(int index)
     {
-        // Use the index to look up the rate from the array
         int frameRate = targetFrameRates[index];
         Application.targetFrameRate = frameRate;
     }
 
     public void SetQuality(int index)
     {
-        // Use the index directly. The second argument (true) ensures settings are applied immediately.
         QualitySettings.SetQualityLevel(index, true);
     }
 
     public void SetAntiAliasing(int index)
     {
-        // Use the index to look up the corresponding AA value (0, 2, 4, 8)
         int aaValue = antiAliasingValues[index];
         QualitySettings.antiAliasing = aaValue;
     }

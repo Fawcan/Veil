@@ -4,13 +4,12 @@ using UnityEngine;
 [System.Serializable]
 public class SaveData
 {
-    // --- DOOR STATE ---
     [System.Serializable]
     public struct SavedDoorState
     {
-        public string doorID;       // Unique identifier for the door instance
-        public float openRatio;     // The ratio between 0 (closed) and 1 (fully open)
-        public bool isLocked;       // If the door was locked when saved
+        public string doorID;
+        public float openRatio;
+        public bool isLocked;
         public SavedDoorState(string id, float ratio, bool locked)
         {
             doorID = id;
@@ -18,9 +17,7 @@ public class SaveData
             isLocked = locked;
         }
     }
-    // ------------------
-    
-    // --- INVENTORY ITEM STATE ---
+
     [System.Serializable]
     public class SavedInventoryItem
     {
@@ -35,13 +32,10 @@ public class SaveData
             canBeDiscarded = discardable;
         }
     }
-    // ----------------------------
-    
-    // --- NEW: WORLD ITEM STATE ---
+
     [System.Serializable]
     public struct SavedWorldItemState
     {
-        // We only need the unique ID of the collected item.
         public string worldItemID; 
 
         public SavedWorldItemState(string id)
@@ -49,33 +43,51 @@ public class SaveData
             worldItemID = id;
         }
     }
-    // -----------------------------
 
-    // Player Stats
+    [System.Serializable]
+    public struct SavedValveState
+    {
+        public string valveID;
+        public float currentAngle;
+        public bool isComplete;
+        public bool isLocked;
+        public bool visibleValveActive;
+        public bool hiddenValveActive;
+
+        public SavedValveState(string id, float angle, bool complete, bool locked, bool visibleActive, bool hiddenActive)
+        {
+            valveID = id;
+            currentAngle = angle;
+            isComplete = complete;
+            isLocked = locked;
+            visibleValveActive = visibleActive;
+            hiddenValveActive = hiddenActive;
+        }
+    }
+
     public float[] playerPosition;
     public float[] playerRotation;
-    public float cameraPitch; // xRotation
+    public float cameraPitch;
     public float playerHealth;
-    // Inventory 
+
     public List<SavedInventoryItem> savedInventoryItems;
 
-    // Door States
     public List<SavedDoorState> doorStates;
     
-    // World Items Collected <-- NEW FIELD
     public List<SavedWorldItemState> collectedWorldItems;
 
-    // Current Scene (useful if you have multiple levels)
+    public List<SavedValveState> valveStates;
+
     public int sceneIndex;
 
     public SaveData()
     {
-        // Initialize the lists
         savedInventoryItems = new List<SavedInventoryItem>();
         doorStates = new List<SavedDoorState>(); 
-        collectedWorldItems = new List<SavedWorldItemState>(); // <-- Initialize new list
+        collectedWorldItems = new List<SavedWorldItemState>();
+        valveStates = new List<SavedValveState>();
         
         playerPosition = new float[3];
-        playerRotation = new float[4]; // Quaternion has 4 components
+        playerRotation = new float[4];
     }
 }
