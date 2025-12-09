@@ -616,6 +616,14 @@ public class FirstPersonController : MonoBehaviour
                     return; // Interaction handled
                 }
 
+                // Check for cable slot interaction
+                CableSlot cableSlot = hit.collider.GetComponentInParent<CableSlot>();
+                if (cableSlot != null)
+                {
+                    cableSlot.Interact(this);
+                    return;
+                }
+
                 InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
                 if (ladder != null) 
                 { 
@@ -640,6 +648,26 @@ public class FirstPersonController : MonoBehaviour
             {
                 inventory.ShowFeedback("Cable slipped from your grasp!");
             }
+        }
+    }
+
+    /// <summary>
+    /// Get the currently held cable (if any).
+    /// </summary>
+    public InteractableCable GetHeldCable()
+    {
+        return currentCable;
+    }
+
+    /// <summary>
+    /// Release the currently held cable without auto-attaching to a slot.
+    /// </summary>
+    public void ReleaseCable()
+    {
+        if (currentCable != null)
+        {
+            currentCable.StopInteract(skipAutoAttach: true);
+            currentCable = null;
         }
     }
 
