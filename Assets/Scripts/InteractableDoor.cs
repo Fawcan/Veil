@@ -56,6 +56,15 @@ public class InteractableDoor : MonoBehaviour
         }
     }
 
+    public void LockByMechanism()
+    {
+        isLocked = true;
+        if (inventorySystem != null)
+        {
+            inventorySystem.ShowFeedback("Mechanism inactive. Hatch locked.");
+        }
+    }
+
     public bool TryUseItem(PickableItem item)
     {
         if (isLocked)

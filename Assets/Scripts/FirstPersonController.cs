@@ -36,7 +36,6 @@ public class FirstPersonController : MonoBehaviour
     public float interactSpeedMultiplier = 0.75f;
     [Tooltip("How far the player can move from a door before it's auto-released.")]
     public float interactionBreakDistance = 3f;
-    private InteractableCable currentCable = null;
 
     [Header("Holding Physics")] 
     public float holdDistance = 1.5f; 
@@ -64,7 +63,7 @@ public class FirstPersonController : MonoBehaviour
     private float standingCameraY;
     private bool isCrouching = false;
     private bool crouchPressed = false;
-    private CharacterController controller; 
+    public CharacterController controller; 
     private Vector3 playerVelocity;
     private bool isGrounded;
     private float xRotation = 0f;
@@ -73,7 +72,7 @@ public class FirstPersonController : MonoBehaviour
     private Vector2 lookInput;
     private bool jumpPressed;
     
-    private PickableItem currentlyHeldItem = null;
+    public PickableItem currentlyHeldItem = null;
     private InteractableDoor heldDoor = null;
     private InteractableValve heldValve = null;
     private InteractableLadder currentLadder = null;
@@ -268,11 +267,34 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
 
+            // Check for cable slot when holding a cable
+            if (currentlyHeldItem != null)
+            {
+                InteractableCable heldCable = currentlyHeldItem.GetComponent<InteractableCable>();
+                if (heldCable != null)
+                {
+                    CableSlot slot = hit.collider.GetComponentInParent<CableSlot>();
+                    if (slot != null && !slot.isOccupied)
+                    {
+                        currentHoverState = HoverState.Use;
+                        return;
+                    }
+                }
+            }
+
             InteractableLadder ladder = hit.collider.GetComponentInParent<InteractableLadder>();
             if (ladder != null)
             {
                 currentHoverState = HoverState.Open;
                 isHoveringLadder = true;
+                return;
+            }
+
+            // Check for cable hover
+            InteractableCable cable = hit.collider.GetComponentInParent<InteractableCable>();
+            if (cable != null)
+            {
+                currentHoverState = HoverState.Open;
                 return;
             }
 
@@ -365,7 +387,27 @@ public class FirstPersonController : MonoBehaviour
         {
             if (currentHoverState == HoverState.Use) textureToDraw = useItemCrosshair; 
         }
-        else if (heldDoor != null || currentlyHeldItem != null || heldValve != null)
+        else if (currentlyHeldItem != null)
+        {
+            InteractableCable heldCable = currentlyHeldItem.GetComponent<InteractableCable>();
+            if (heldCable != null)
+            {
+                // Holding a cable - show interact crosshair, or use crosshair when hovering slot
+                if (currentHoverState == HoverState.Use)
+                {
+                    textureToDraw = useCrosshair;
+                }
+                else
+                {
+                    textureToDraw = interactCrosshair;
+                }
+            }
+            else
+            {
+                textureToDraw = interactCrosshair;
+            }
+        }
+        else if (heldDoor != null || heldValve != null)
         {
             textureToDraw = interactCrosshair;
         }
@@ -464,7 +506,10 @@ public class FirstPersonController : MonoBehaviour
     {
         if (context.performed)
         {
-            if (currentlyHeldItem != null) { DropItem(true); }
+            if (currentlyHeldItem != null) 
+            { 
+                DropItem(true); 
+            }
         }
     }
     public void OnInventory(InputAction.CallbackContext context)
@@ -604,18 +649,6 @@ public class FirstPersonController : MonoBehaviour
                 SavePoint savePoint = hit.collider.GetComponent<SavePoint>();
                 if (savePoint != null) { savePoint.Interact(); return; }
 
-                // ------------------------------------------------------------------
-                // NEW: Cable Interaction Check
-                // ------------------------------------------------------------------
-                InteractableCable cable = hit.collider.GetComponentInParent<InteractableCable>();
-                if (cable != null)
-                {
-                    currentCable = cable;
-                    // Pass the transform that the cable end will attach to
-                    currentCable.StartInteract(heldItemHolder); 
-                    return; // Interaction handled
-                }
-
                 // Check for cable slot interaction
                 CableSlot cableSlot = hit.collider.GetComponentInParent<CableSlot>();
                 if (cableSlot != null)
@@ -632,42 +665,6 @@ public class FirstPersonController : MonoBehaviour
                     return; 
                 }
             }
-        }
-    }
-    
-    public void ReleaseCurrentInteraction()
-    {
-        // 1. Release the Cable
-        if (currentCable != null)
-        {
-            currentCable.StopInteract(); // Tell the cable object to release its end
-            currentCable = null; 
-            
-            // You would use your InventorySystem's feedback display here
-            if (inventory != null)
-            {
-                inventory.ShowFeedback("Cable slipped from your grasp!");
-            }
-        }
-    }
-
-    /// <summary>
-    /// Get the currently held cable (if any).
-    /// </summary>
-    public InteractableCable GetHeldCable()
-    {
-        return currentCable;
-    }
-
-    /// <summary>
-    /// Release the currently held cable without auto-attaching to a slot.
-    /// </summary>
-    public void ReleaseCable()
-    {
-        if (currentCable != null)
-        {
-            currentCable.StopInteract(skipAutoAttach: true);
-            currentCable = null;
         }
     }
 
