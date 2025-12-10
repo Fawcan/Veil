@@ -23,6 +23,16 @@ public class FirstPersonController : MonoBehaviour
     public float crouchHeightMultiplier = 0.5f;
     public float crouchSpeedMultiplier = 0.5f;
     public float crouchLerpSpeed = 10f;
+    
+    [Header("Stealth")]
+    [Tooltip("Time player must be crouched and still before entering stealth mode.")]
+    public float stealthDelay = 1.5f;
+    
+    [Tooltip("FOV reduction when in stealth mode.")]
+    public float stealthFOVReduction = 10f;
+    
+    [Tooltip("Speed of FOV transition.")]
+    public float fovTransitionSpeed = 2f;
 
     [Header("Ground & Obstacle Check")]
     public LayerMask obstacleMask;
@@ -66,16 +76,26 @@ public class FirstPersonController : MonoBehaviour
     public CharacterController controller; 
     private Vector3 playerVelocity;
     private bool isGrounded;
+    private Vector3 lastPosition;
+    private float movementThreshold = 0.01f;
     private float xRotation = 0f;
+    
+    private float stealthTimer = 0f;
+    private bool isInStealthMode = false;
+    private Camera playerCamera;
+    private float normalFOV;
+    private float targetFOV;
 
     private Vector2 moveInput;
     private Vector2 lookInput;
     private bool jumpPressed;
+    private bool isCameraLocked = false;
     
     public PickableItem currentlyHeldItem = null;
     private InteractableDoor heldDoor = null;
     private InteractableValve heldValve = null;
     private InteractableLadder currentLadder = null;
+    private bool isHoldingInteractForWeapon = false;
 
     private enum HoverState { None, Open, Use }
     private HoverState currentHoverState = HoverState.None;
@@ -87,6 +107,14 @@ public class FirstPersonController : MonoBehaviour
         controller = GetComponent<CharacterController>(); 
         if (cameraTransform == null) cameraTransform = Camera.main.transform;
         if (heldItemHolder == null) heldItemHolder = cameraTransform;
+        
+        playerCamera = cameraTransform.GetComponent<Camera>();
+        if (playerCamera != null)
+        {
+            normalFOV = playerCamera.fieldOfView;
+            targetFOV = normalFOV;
+        }
+        
         standingHeight = controller.height;
         standingHeight = controller.height;
         standingCenter = controller.center;
@@ -151,6 +179,18 @@ public class FirstPersonController : MonoBehaviour
             playerVelocity.y += gravity * Time.deltaTime;
             controller.Move(playerVelocity * Time.deltaTime);
         }
+        
+        // Track position for stealth detection
+        lastPosition = transform.position;
+        
+        // Update stealth state with delay
+        UpdateStealthState();
+        
+        // Smoothly transition FOV
+        if (playerCamera != null)
+        {
+            playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, fovTransitionSpeed * Time.deltaTime);
+        }
 
         if (PauseMenu.GameIsPaused) return;
         if (inventory != null && inventory.isOpen) return;
@@ -181,8 +221,22 @@ public class FirstPersonController : MonoBehaviour
                 heldValve.UpdateInteraction(lookInput.x); 
             }
         }
+        
+        // Handle weapon swinging when holding interact
+        if (isHoldingInteractForWeapon && flashlightController != null)
+        {
+            PickableItem equippedItem = flashlightController.GetEquippedItem();
+            if (equippedItem != null)
+            {
+                WeaponItem weapon = equippedItem.GetComponent<WeaponItem>();
+                if (weapon != null)
+                {
+                    weapon.TrySwing(lookInput);
+                }
+            }
+        }
 
-        if (heldDoor == null && heldValve == null) {
+        if (heldDoor == null && heldValve == null && !isCameraLocked) {
             transform.Rotate(Vector3.up * mouseX);
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -90f, 90f);
@@ -205,6 +259,51 @@ public class FirstPersonController : MonoBehaviour
         }
     }
 
+    public bool IsStealthy()
+    {
+        return isInStealthMode;
+    }
+    
+    public void SetCameraLocked(bool locked)
+    {
+        isCameraLocked = locked;
+    }
+    
+    private void UpdateStealthState()
+    {
+        // Check if player meets stealth conditions (crouched and still)
+        bool meetsStealthConditions = false;
+        
+        if (isCrouching)
+        {
+            float distanceMoved = Vector3.Distance(transform.position, lastPosition);
+            meetsStealthConditions = distanceMoved < movementThreshold;
+        }
+        
+        // Update stealth timer
+        if (meetsStealthConditions)
+        {
+            stealthTimer += Time.deltaTime;
+            
+            // Enter stealth mode after delay
+            if (stealthTimer >= stealthDelay && !isInStealthMode)
+            {
+                isInStealthMode = true;
+                targetFOV = normalFOV - stealthFOVReduction;
+            }
+        }
+        else
+        {
+            // Reset timer and exit stealth mode immediately
+            stealthTimer = 0f;
+            if (isInStealthMode)
+            {
+                isInStealthMode = false;
+                targetFOV = normalFOV;
+            }
+        }
+    }
+
     private void Die()
     {
         Debug.Log("Player Died. Showing Menu...");
@@ -222,7 +321,7 @@ public class FirstPersonController : MonoBehaviour
         Rigidbody itemRb = currentlyHeldItem.GetComponent<Rigidbody>();
         if (itemRb == null) return;
 
-        Vector3 targetPosition = cameraTransform.position + cameraTransform.forward * holdDistance;
+        Vector3 targetPosition = cameraTransform.position + cameraTransform.forward * 0.8f;
         Vector3 displacement = targetPosition - currentlyHeldItem.transform.position;
         
         if (displacement.magnitude > interactionBreakDistance) 
@@ -232,10 +331,18 @@ public class FirstPersonController : MonoBehaviour
             return;
         }
 
-        itemRb.AddForce(displacement * holdForce, ForceMode.Acceleration);
+        // Weapons don't need as much force correction during swinging
+        WeaponItem weapon = currentlyHeldItem.GetComponent<WeaponItem>();
+        float forceMultiplier = (weapon != null && weapon.IsSwinging()) ? 0.3f : 1f;
         
-        Quaternion targetRotation = cameraTransform.rotation;
-        currentlyHeldItem.transform.rotation = Quaternion.Slerp(currentlyHeldItem.transform.rotation, targetRotation, Time.deltaTime * 10f);
+        itemRb.AddForce(displacement * holdForce * forceMultiplier, ForceMode.Acceleration);
+        
+        // Don't force rotation on weapons while swinging
+        if (weapon == null || !weapon.IsSwinging())
+        {
+            Quaternion targetRotation = cameraTransform.rotation;
+            currentlyHeldItem.transform.rotation = Quaternion.Slerp(currentlyHeldItem.transform.rotation, targetRotation, Time.deltaTime * 10f);
+        }
     }
 
     void CheckInteractable()
@@ -480,8 +587,18 @@ public class FirstPersonController : MonoBehaviour
                 
                 if (isSmash)
                 {
-                    itemRb.AddForce(cameraTransform.forward * smashForce, ForceMode.Impulse);
-                    if(inventory != null) inventory.ShowFeedback($"SMASH!");
+                    // Use item's throwForce if it's throwable, otherwise use smashForce
+                    float force = currentlyHeldItem.isThrowable ? currentlyHeldItem.throwForce : smashForce;
+                    itemRb.AddForce(cameraTransform.forward * force, ForceMode.Impulse);
+                    
+                    if (currentlyHeldItem.isThrowable)
+                    {
+                        if(inventory != null) inventory.ShowFeedback($"Threw {currentlyHeldItem.itemName}!");
+                    }
+                    else
+                    {
+                        if(inventory != null) inventory.ShowFeedback($"SMASH!");
+                    }
                 }
             }
             
@@ -540,6 +657,10 @@ public class FirstPersonController : MonoBehaviour
         if (context.canceled || !context.ReadValueAsButton()) { 
             if (heldDoor != null) { heldDoor.StopInteract(); heldDoor = null; } 
             if (heldValve != null) { heldValve.StopInteract(); heldValve = null; }
+            
+            // Stop weapon swinging when interact is released
+            isHoldingInteractForWeapon = false;
+            
             return; 
         }
         
@@ -547,6 +668,21 @@ public class FirstPersonController : MonoBehaviour
         {
             if (PauseMenu.GameIsPaused) return;
             if (inventory != null && inventory.isOpen) return;
+            
+            // Check if holding a weapon through equipment system
+            if (flashlightController != null)
+            {
+                PickableItem equippedItem = flashlightController.GetEquippedItem();
+                if (equippedItem != null)
+                {
+                    WeaponItem weapon = equippedItem.GetComponent<WeaponItem>();
+                    if (weapon != null)
+                    {
+                        isHoldingInteractForWeapon = true;
+                        return; // Don't process other interactions while holding weapon
+                    }
+                }
+            }
 
             if (currentLadder != null && currentLadder.IsPlayerClimbing())
             {

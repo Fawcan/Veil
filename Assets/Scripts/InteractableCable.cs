@@ -45,10 +45,8 @@ public class InteractableCable : PickableItem
     /// </summary>
     public new void PickUp(Transform holder)
     {
-        Debug.Log($"Cable: PickUp called");
         base.PickUp(holder);
         isCableHeld = true;
-        Debug.Log($"Cable: isCableHeld set to true");
         
         // Re-enable collider for trigger detection with cable slots
         if (cableEndRigidbody != null)
@@ -57,14 +55,12 @@ public class InteractableCable : PickableItem
             if (col != null)
             {
                 col.enabled = true;
-                Debug.Log($"Cable: Collider re-enabled for trigger detection while held");
             }
         }
     }
     
     public new void Drop(Transform cameraTransform, float force)
     {
-        Debug.Log($"Cable: Drop called");
         isCableHeld = false;
         base.Drop(cameraTransform, force);
     }
@@ -79,7 +75,6 @@ public class InteractableCable : PickableItem
         if (cableEndRigidbody == null)
         {
             cableEndRigidbody = GetComponent<Rigidbody>();
-            Debug.Log($"Cable: cableEndRigidbody auto-assigned: {cableEndRigidbody != null}");
         }
         
         // Ensure cable end has a collider for trigger detection
@@ -89,16 +84,13 @@ public class InteractableCable : PickableItem
             col = cableEndRigidbody.gameObject.AddComponent<SphereCollider>();
             ((SphereCollider)col).radius = 0.15f;
             col.isTrigger = false;
-            Debug.LogWarning($"Cable '{itemName}' end had no collider. Added SphereCollider for collision detection.");
         }
         else if (col != null)
         {
-            Debug.Log($"Cable: Collider found - Type: {col.GetType().Name}, IsTrigger: {col.isTrigger}, Enabled: {col.enabled}");
         }
         
         if (cableEndRigidbody != null)
         {
-            Debug.Log($"Cable: Rigidbody - IsKinematic: {cableEndRigidbody.isKinematic}, Mass: {cableEndRigidbody.mass}, UseGravity: {cableEndRigidbody.useGravity}");
         }
         
         if (cableJoint != null)
@@ -108,11 +100,9 @@ public class InteractableCable : PickableItem
         
         if (fixedEnd == null)
         {
-            Debug.LogWarning($"Cable '{itemName}' has no fixed end assigned!");
         }
         
         // Verify setup
-        Debug.Log($"Cable '{itemName}' initialized. GameObject: {gameObject.name}, Layer: {LayerMask.LayerToName(gameObject.layer)}");
     }
 
     void OnCollisionEnter(Collision collision)
@@ -130,12 +120,10 @@ public class InteractableCable : PickableItem
             if (shouldBeHeld != isCableHeld)
             {
                 isCableHeld = shouldBeHeld;
-                Debug.Log($"Cable: isCableHeld updated to {isCableHeld}");
                 
                 // If we just got picked up and were attached to a slot, detach
                 if (isCableHeld && IsAttachedToSlot())
                 {
-                    Debug.Log($"Cable: Picked up while attached, detaching from slot");
                     DetachFromSlot();
                 }
             }
@@ -188,17 +176,14 @@ public class InteractableCable : PickableItem
     /// </summary>
     public bool AttachToSlot(CableSlot slot)
     {
-        Debug.Log($"Cable: AttachToSlot called for slot '{slot.slotID}', isOccupied={slot.isOccupied}");
         
         if (slot == null || slot.isOccupied)
         {
-            Debug.Log($"Cable: AttachToSlot failed - slot null or occupied");
             return false;
         }
 
         if (attachedSlot != null)
         {
-            Debug.Log($"Cable: Detaching from previous slot first");
             DetachFromSlot();
         }
 
@@ -209,13 +194,10 @@ public class InteractableCable : PickableItem
             cableEndRigidbody.transform.rotation = slot.attachmentPoint.rotation;
             cableEndRigidbody.transform.SetParent(slot.attachmentPoint);
             cableEndRigidbody.isKinematic = true;
-            Debug.Log($"Cable: Snapped to attachment point");
         }
 
         attachedSlot = slot;
         slot.AttachCable(this);
-
-        Debug.Log($"Cable '{itemName}' attached to slot '{slot.slotID}', slot now occupied={slot.isOccupied}");
         return true;
     }
 
@@ -238,8 +220,6 @@ public class InteractableCable : PickableItem
         
         // Set grace period timer
         lastDetachTime = Time.time;
-
-        Debug.Log($"Cable '{itemName}' detached from slot '{slot.slotID}', grace period active for {reconnectGracePeriod}s");
     }
 
     /// <summary>
@@ -271,18 +251,15 @@ public class InteractableCable : PickableItem
 
     void OnTriggerEnter(Collider other)
     {
-        Debug.Log($"CABLE TRIGGER ENTER: {other.name}, isCableHeld={isCableHeld}");
         
         // Auto-connect when cable end touches a slot while being held
         if (!autoConnectOnCollision)
         {
-            Debug.Log($"Cable: Auto-connect disabled");
             return;
         }
         
         if (IsAttachedToSlot())
         {
-            Debug.Log($"Cable: Already attached to slot");
             return;
         }
         
@@ -290,14 +267,12 @@ public class InteractableCable : PickableItem
         float timeSinceDetach = Time.time - lastDetachTime;
         if (timeSinceDetach < reconnectGracePeriod)
         {
-            Debug.Log($"Cable: Grace period active ({reconnectGracePeriod - timeSinceDetach:F2}s remaining)");
             return;
         }
 
         // Check if we're currently being held by the player
         if (!isCableHeld)
         {
-            Debug.Log($"Cable: Not being held by player, isCableHeld={isCableHeld}");
             return;
         }
 
@@ -314,21 +289,16 @@ public class InteractableCable : PickableItem
         
         if (slot == null)
         {
-            Debug.Log($"Cable: Collided with {other.name} (GameObject: {other.gameObject.name}) but no CableSlot found on it, parent, or children");
             return;
         }
         
-        Debug.Log($"Cable: Found slot '{slot.slotID}', occupied={slot.isOccupied}");
-        
         if (slot.isOccupied)
         {
-            Debug.Log($"Cable: Slot is occupied");
             return;
         }
         
         if (!CanReachSlot(slot))
         {
-            Debug.Log($"Cable: Cannot reach slot (too far from fixed end)");
             return;
         }
 
@@ -336,17 +306,13 @@ public class InteractableCable : PickableItem
         FirstPersonController player = FindFirstObjectByType<FirstPersonController>();
         if (player == null)
         {
-            Debug.Log($"Cable: No player found");
             return;
         }
         
         if (player.currentlyHeldItem != this)
         {
-            Debug.Log($"Cable: Player not holding this cable (holding: {player.currentlyHeldItem?.itemName ?? "nothing"})");
             return;
         }
-
-        Debug.Log($"Cable: Attempting to attach to slot '{slot.slotID}'");
         
         // Attach cable to slot
         if (AttachToSlot(slot))
@@ -356,14 +322,10 @@ public class InteractableCable : PickableItem
             
             if (player.inventory != null)
             {
-                player.inventory.ShowFeedback($"Cable connected!");
             }
-            
-            Debug.Log($"Cable: Successfully attached!");
         }
         else
         {
-            Debug.Log($"Cable: AttachToSlot returned false");
         }
     }
 

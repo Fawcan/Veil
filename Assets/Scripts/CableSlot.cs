@@ -51,15 +51,10 @@ public class CableSlot : MonoBehaviour
             col = gameObject.AddComponent<SphereCollider>();
             ((SphereCollider)col).radius = attachmentRange;
             col.isTrigger = true;
-            Debug.LogWarning($"CableSlot '{slotID}' had no collider. Added trigger SphereCollider for auto-connect.");
         }
         else if (!col.isTrigger)
         {
-            Debug.LogWarning($"CableSlot '{slotID}' collider is not a trigger! Set 'Is Trigger' to true for auto-connect.");
         }
-
-        Debug.Log($"CableSlot '{slotID}' initialized. Trigger: {col.isTrigger}, Occupied: {isOccupied}");
-        Debug.Log($"CableSlot: GameObject: {gameObject.name}, Layer: {LayerMask.LayerToName(gameObject.layer)}, AttachmentPoint: {attachmentPoint?.name}");
         
         UpdateVisuals();
     }
@@ -77,12 +72,10 @@ public class CableSlot : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
-        Debug.Log($"SLOT TRIGGER ENTER: {other.name} (GameObject: {other.gameObject.name}) entered slot '{slotID}'");
     }
 
     void OnCollisionEnter(Collision collision)
     {
-        Debug.Log($"SLOT COLLISION ENTER: {collision.gameObject.name} hit slot '{slotID}'");
     }
 
     /// <summary>
@@ -91,29 +84,22 @@ public class CableSlot : MonoBehaviour
     /// </summary>
     public void AttachCable(InteractableCable cable)
     {
-        Debug.Log($"Slot: AttachCable called, cable={cable?.itemName}, current occupied={isOccupied}");
         
         if (cable == null)
         {
-            Debug.LogWarning($"Attempted to attach null cable to slot '{slotID}'");
             return;
         }
 
         if (isOccupied && attachedCable != cable)
         {
-            Debug.Log($"Slot '{slotID}' is already occupied by another cable.");
             return;
         }
 
         attachedCable = cable;
         isOccupied = true;
 
-        Debug.Log($"Slot: Setting isOccupied=true for slot '{slotID}'");
-
         UpdateVisuals();
         onCableAttached?.Invoke();
-
-        Debug.Log($"Cable '{cable.itemName}' attached to slot '{slotID}', isOccupied={isOccupied}");
     }
 
     /// <summary>
@@ -122,7 +108,6 @@ public class CableSlot : MonoBehaviour
     /// </summary>
     public void DetachCable()
     {
-        Debug.Log("aaa");
         if (!isOccupied || attachedCable == null)
         {
             return;
@@ -134,8 +119,6 @@ public class CableSlot : MonoBehaviour
 
         UpdateVisuals();
         onCableDetached?.Invoke();
-
-        Debug.Log($"Cable '{cable.itemName}' detached from slot '{slotID}'");
     }
 
     /// <summary>
@@ -182,7 +165,6 @@ public class CableSlot : MonoBehaviour
                 Rigidbody cableRb = attachedCable.GetComponent<Rigidbody>();
                 if (cableRb != null)
                 {
-                    Debug.Log("Poop");
                     cableRb.isKinematic = false;
                     cableRb.useGravity = false;
                     cableRb.linearVelocity = Vector3.zero;
@@ -194,7 +176,6 @@ public class CableSlot : MonoBehaviour
 
                 if (player.inventory != null)
                 {
-                    player.inventory.ShowFeedback($"Picked up cable from slot.");
                 }
             }
             return;
@@ -204,7 +185,6 @@ public class CableSlot : MonoBehaviour
         if (player.currentlyHeldItem != null)
         {
             InteractableCable heldCable = player.currentlyHeldItem.GetComponent<InteractableCable>();
-            Debug.Log("asd");
             if (heldCable != null)
             {
                 // Check if cable can reach this slot
@@ -212,7 +192,6 @@ public class CableSlot : MonoBehaviour
                 {
                     if (player.inventory != null)
                     {
-                        player.inventory.ShowFeedback("Cable cannot reach this slot.");
                     }
                     return;
                 }
@@ -225,7 +204,6 @@ public class CableSlot : MonoBehaviour
                     
                     if (player.inventory != null)
                     {
-                        player.inventory.ShowFeedback($"Cable attached to slot.");
                     }
                 }
             }
@@ -233,7 +211,6 @@ public class CableSlot : MonoBehaviour
             {
                 if (player.inventory != null)
                 {
-                    player.inventory.ShowFeedback("You need to be holding a cable.");
                 }
             }
         }
@@ -241,7 +218,6 @@ public class CableSlot : MonoBehaviour
         {
             if (player.inventory != null)
             {
-                player.inventory.ShowFeedback("Slot is empty. Hold a cable to attach it.");
             }
         }
     }
@@ -255,7 +231,6 @@ public class CableSlot : MonoBehaviour
 
         if (occupiedIndicator != null)
         {
-            Debug.Log("Occupied");
             occupiedIndicator.SetActive(isOccupied);
         }
     }

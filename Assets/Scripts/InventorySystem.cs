@@ -234,6 +234,23 @@ public class InventorySystem : MonoBehaviour
     // Executes the use action for an item (equip flashlight, use key, etc.)
     public void PerformItemAction(PickableItem item)
     {
+        // Handle WeaponItem equipping
+        if (item is WeaponItem weapon && flashlightController != null)
+        {
+            if (flashlightController.GetEquippedItem() == weapon)
+            {
+                flashlightController.UnequipCurrentLight();
+                ShowFeedback($"{item.itemName} put away.");
+            }
+            else
+            {
+                flashlightController.UnequipCurrentLight();
+                flashlightController.EquipLightItem(weapon.GetComponent<PickableItem>());
+                ShowFeedback($"{item.itemName} equipped. Hold Interact and move mouse to swing!");
+            }
+            CloseInventory();
+            return;
+        }
         
         if (item is FlashlightItem flashlight && flashlightController != null)
         {
@@ -281,6 +298,58 @@ public class InventorySystem : MonoBehaviour
             }
             CloseInventory(); 
             return;
+        }
+        
+        // Handle throwable items
+        if (item.isThrowable)
+        {
+            FirstPersonController player = FindFirstObjectByType<FirstPersonController>();
+            if (player != null && player.currentlyHeldItem == null)
+            {
+                // Remove from inventory and equip for throwing
+                collectedItems.Remove(item);
+                item.gameObject.SetActive(true);
+                
+                // Position item in front of camera
+                if (player.cameraTransform != null)
+                {
+                    item.transform.position = player.cameraTransform.position + player.cameraTransform.forward * 0.5f;
+                    item.transform.rotation = player.cameraTransform.rotation;
+                }
+                
+                player.currentlyHeldItem = item;
+                
+                // If it's a flare, ignite it
+                FlareItem flare = item.GetComponent<FlareItem>();
+                if (flare != null && !flare.IsActive())
+                {
+                    flare.Ignite();
+                }
+                
+                // Setup physics for holding
+                Collider[] itemColliders = item.GetComponentsInChildren<Collider>();
+                foreach (Collider c in itemColliders)
+                {
+                    Physics.IgnoreCollision(c, player.controller, true);
+                }
+
+                Rigidbody itemRb = item.GetComponent<Rigidbody>();
+                if (itemRb != null)
+                {
+                    itemRb.isKinematic = false;
+                    itemRb.useGravity = false;
+                    itemRb.linearVelocity = Vector3.zero;
+                    itemRb.angularVelocity = Vector3.zero;
+                    itemRb.linearDamping = 20f;
+                    itemRb.angularDamping = 20f;
+                    itemRb.constraints = RigidbodyConstraints.FreezeRotation;
+                }
+                
+                CloseInventory();
+                RefreshUI();
+                ShowFeedback($"Ready to throw {item.itemName}. Press [Throw] to launch it!");
+                return;
+            }
         }
 
         if (item.OnUse(this)) 

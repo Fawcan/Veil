@@ -17,12 +17,14 @@ public class InteractableDoor : MonoBehaviour
     
     [Header("Movement")]
     public float openAngle = 125f; 
-    public float interactionSpeed = 0.5f; 
+    public float interactionSpeed = 0.5f;
+    public float autoCloseSpeed = 2f;
 
     private Quaternion startRotation;
     private Quaternion openRotation;
     private Transform pivot;
     private bool isInteracting = false;
+    private bool isAutoClosing = false;
     
     private float targetRotationY; 
     
@@ -59,6 +61,8 @@ public class InteractableDoor : MonoBehaviour
     public void LockByMechanism()
     {
         isLocked = true;
+        isAutoClosing = true;
+        
         if (inventorySystem != null)
         {
             inventorySystem.ShowFeedback("Mechanism inactive. Hatch locked.");
@@ -123,6 +127,22 @@ public class InteractableDoor : MonoBehaviour
     
     void Update()
     {
+        // Auto-close door when locked by mechanism
+        if (isAutoClosing)
+        {
+            if (targetRotationY > 0f)
+            {
+                targetRotationY -= autoCloseSpeed * Time.deltaTime;
+                targetRotationY = Mathf.Max(targetRotationY, 0f);
+                
+                Quaternion targetRot = Quaternion.Lerp(startRotation, openRotation, targetRotationY);
+                pivot.localRotation = targetRot;
+            }
+            else
+            {
+                isAutoClosing = false;
+            }
+        }
     }
     
     public SaveData.SavedDoorState GetSaveState()

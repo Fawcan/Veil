@@ -25,7 +25,13 @@ public class PickableItem : MonoBehaviour
     public bool canBeUsedFromInventory = false; 
     
     [Tooltip("If checked, the item can be removed (discarded) from the inventory.")]
-    public bool canBeDiscarded = true; 
+    public bool canBeDiscarded = true;
+    
+    [Tooltip("If checked, using this item from inventory will equip it for throwing.")]
+    public bool isThrowable = false;
+    
+    [Tooltip("Force applied when throwing this item.")]
+    public float throwForce = 15f;
     
     private bool isHeld = false;
     private Rigidbody rb;
