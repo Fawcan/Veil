@@ -239,6 +239,7 @@ public class InventorySystem : MonoBehaviour
         {
             if (flashlightController.GetEquippedItem() == weapon)
             {
+                weapon.SetEquipped(false);
                 flashlightController.UnequipCurrentLight();
                 ShowFeedback($"{item.itemName} put away.");
             }
@@ -246,6 +247,7 @@ public class InventorySystem : MonoBehaviour
             {
                 flashlightController.UnequipCurrentLight();
                 flashlightController.EquipLightItem(weapon.GetComponent<PickableItem>());
+                weapon.SetEquipped(true);
                 ShowFeedback($"{item.itemName} equipped. Hold Interact and move mouse to swing!");
             }
             CloseInventory();
@@ -437,6 +439,19 @@ public class InventorySystem : MonoBehaviour
     public List<PickableItem> GetCollectedItems()
     {
         return collectedItems;
+    }
+
+    // Checks if an item with the given itemId is already in inventory
+    public bool HasItem(int itemId)
+    {
+        foreach (var item in collectedItems)
+        {
+            if (item.itemId == itemId)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Converts current inventory into save data format for game saving

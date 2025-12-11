@@ -156,19 +156,22 @@ MonoBehaviour:
   itemId: 0
   itemName: Default Item
   itemDescription: A generic item.
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 957c489419965cc47ba6877ffe4f2968, type: 3}
   isStorable: 1
   canBeUsedFromInventory: 0
   canBeDiscarded: 1
   isThrowable: 0
   throwForce: 15
   damage: 50
-  swingThreshold: 2
-  swingForce: 10
-  swingCooldown: 0.5
-  swingDuration: 0.3
   hitLayers:
     serializedVersion: 2
     m_Bits: 0
-  swingSound: {fileID: 0}
+  windupPositionOffset: {x: -0.4, y: 0.1, z: 0.5}
+  idlePositionOffset: {x: 0.4, y: -0.4, z: 0.5}
+  idleRotation: {x: -25, y: 180, z: 90}
+  positionSpeed: 5
+  mouseThreshold: 0.5
+  attackCooldown: 0
+  windupSound: {fileID: 0}
+  attackSound: {fileID: 0}
   hitSound: {fileID: 0}

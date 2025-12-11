@@ -102,10 +102,12 @@ MonoBehaviour:
   itemId: 1
   itemName: Flashlight
   itemDescription: Da flashlight
-  icon: {fileID: 21300000, guid: afd4156ff8aa97244961a16bc342645a, type: 3}
+  icon: {fileID: 21300000, guid: 71fdbf997786082478bc95e9cfdd0b67, type: 3}
   isStorable: 1
   canBeUsedFromInventory: 0
   canBeDiscarded: 0
+  isThrowable: 0
+  throwForce: 15
   lightSource: {fileID: 6226448503278692488}
   flashlightMesh: {fileID: 4165933174418157016}
   maxBatteryLife: 300

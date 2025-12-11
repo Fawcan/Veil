@@ -222,8 +222,8 @@ public class FirstPersonController : MonoBehaviour
             }
         }
         
-        // Handle weapon swinging when holding interact
-        if (isHoldingInteractForWeapon && flashlightController != null)
+        // Handle weapon mouse movement when left click is held
+        if (flashlightController != null)
         {
             PickableItem equippedItem = flashlightController.GetEquippedItem();
             if (equippedItem != null)
@@ -231,7 +231,11 @@ public class FirstPersonController : MonoBehaviour
                 WeaponItem weapon = equippedItem.GetComponent<WeaponItem>();
                 if (weapon != null)
                 {
-                    weapon.TrySwing(lookInput);
+                    // Set interact button state on weapon
+                    weapon.SetInteractHeld(isHoldingInteractForWeapon);
+                    
+                    // Pass mouse delta to weapon for state handling
+                    weapon.OnMouseMove(lookInput);
                 }
             }
         }
@@ -331,18 +335,10 @@ public class FirstPersonController : MonoBehaviour
             return;
         }
 
-        // Weapons don't need as much force correction during swinging
-        WeaponItem weapon = currentlyHeldItem.GetComponent<WeaponItem>();
-        float forceMultiplier = (weapon != null && weapon.IsSwinging()) ? 0.3f : 1f;
+        itemRb.AddForce(displacement * holdForce, ForceMode.Acceleration);
         
-        itemRb.AddForce(displacement * holdForce * forceMultiplier, ForceMode.Acceleration);
-        
-        // Don't force rotation on weapons while swinging
-        if (weapon == null || !weapon.IsSwinging())
-        {
-            Quaternion targetRotation = cameraTransform.rotation;
-            currentlyHeldItem.transform.rotation = Quaternion.Slerp(currentlyHeldItem.transform.rotation, targetRotation, Time.deltaTime * 10f);
-        }
+        Quaternion targetRotation = cameraTransform.rotation;
+        currentlyHeldItem.transform.rotation = Quaternion.Slerp(currentlyHeldItem.transform.rotation, targetRotation, Time.deltaTime * 10f);
     }
 
     void CheckInteractable()
@@ -405,8 +401,19 @@ public class FirstPersonController : MonoBehaviour
                 return;
             }
 
-            if (hit.collider.GetComponent<PickableItem>() != null ||
-                hit.collider.GetComponentInParent<InteractableDoor>() != null ||
+            PickableItem pickableItem = hit.collider.GetComponent<PickableItem>();
+            if (pickableItem != null)
+            {
+                // Don't show interaction prompt if this item is already in inventory
+                if (inventory != null && inventory.HasItem(pickableItem.itemId))
+                {
+                    return;
+                }
+                currentHoverState = HoverState.Open;
+                return;
+            }
+
+            if (hit.collider.GetComponentInParent<InteractableDoor>() != null ||
                 hit.collider.GetComponentInParent<InteractableValve>() != null)
             {
                 currentHoverState = HoverState.Open;
@@ -629,6 +636,33 @@ public class FirstPersonController : MonoBehaviour
             }
         }
     }
+    
+    public void OnFire(InputAction.CallbackContext context)
+    {
+        if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
+        if (PauseMenu.GameIsPaused) return;
+        if (inventory != null && inventory.isOpen) return;
+        
+        // Check if holding a weapon
+        if (flashlightController != null)
+        {
+            PickableItem equippedItem = flashlightController.GetEquippedItem();
+            if (equippedItem != null)
+            {
+                WeaponItem weapon = equippedItem.GetComponent<WeaponItem>();
+                if (weapon != null)
+                {
+                    if (context.canceled || !context.ReadValueAsButton())
+                    {
+                        // Mouse released
+                        weapon.OnMouseRelease();
+                    }
+                    // Mouse movement is handled in Update
+                }
+            }
+        }
+    }
+    
     public void OnInventory(InputAction.CallbackContext context)
     { 
         if (GameManager.Instance != null && GameManager.Instance.isGameOver) return;
@@ -661,6 +695,20 @@ public class FirstPersonController : MonoBehaviour
             // Stop weapon swinging when interact is released
             isHoldingInteractForWeapon = false;
             
+            // Unlock camera when releasing interact if weapon is equipped
+            if (flashlightController != null)
+            {
+                PickableItem equippedItem = flashlightController.GetEquippedItem();
+                if (equippedItem != null)
+                {
+                    WeaponItem weapon = equippedItem.GetComponent<WeaponItem>();
+                    if (weapon != null)
+                    {
+                        SetCameraLocked(false);
+                    }
+                }
+            }
+            
             return; 
         }
         
@@ -679,6 +727,7 @@ public class FirstPersonController : MonoBehaviour
                     if (weapon != null)
                     {
                         isHoldingInteractForWeapon = true;
+                        SetCameraLocked(true); // Lock camera when interact is pressed with weapon
                         return; // Don't process other interactions while holding weapon
                     }
                 }

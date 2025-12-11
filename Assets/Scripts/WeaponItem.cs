@@ -1,43 +1,83 @@
 using UnityEngine;
 
 /// <summary>
-/// WeaponItem - A melee weapon that can be swung by holding interact and moving the mouse.
-/// Similar to the attack mechanic in Penumbra: Overture.
+/// WeaponItem - A melee weapon with state-based swing mechanics.
+/// Hold left click and move mouse to wind up, then swing back to attack.
 /// </summary>
 public class WeaponItem : PickableItem
 {
+    // States: Idle -> Swing (winding up) -> Attack (striking) -> Idle
+    public enum WeaponState
+    {
+        Idle,
+        Swing,   // Winding up (moving hammer to side)
+        Attack   // Striking (swinging through)
+    }
+    
     [Header("Weapon Settings")]
     [Tooltip("Damage dealt when hitting an enemy.")]
     public int damage = 50;
     
-    [Tooltip("Minimum mouse movement speed required to trigger a swing.")]
-    public float swingThreshold = 2f;
-    
-    [Tooltip("Force multiplier applied to the weapon during swing.")]
-    public float swingForce = 10f;
-    
-    [Tooltip("Cooldown between swings in seconds.")]
-    public float swingCooldown = 0.5f;
-    
-    [Tooltip("How long the weapon remains active after swinging (damage window).")]
-    public float swingDuration = 0.3f;
-    
     [Tooltip("Layer mask for objects that can be hit by the weapon.")]
     public LayerMask hitLayers;
     
+    [Header("Swing Mechanics")]
+    [Tooltip("Position offset when wound up ready to attack.")]
+    public Vector3 windupPositionOffset = new Vector3(-0.4f, 0.1f, 0.5f);
+    
+    [Tooltip("Position offset at rest (idle).")]
+    public Vector3 idlePositionOffset = new Vector3(0f, -0.25f, -0.1f);
+    
+    [Tooltip("Rotation of weapon when held (idle).")]
+    public Vector3 idleRotation = new Vector3(-25f, 180f, 90f);
+    
+    [Tooltip("Position at screen center during attack (in parent space). Adjusted so top of weapon hits crosshair.")]
+    public Vector3 attackCenterPosition = new Vector3(0f, -0.2f, 0.5f);
+    
+    [Tooltip("Speed of position animation.")]
+    public float positionSpeed = 5f;
+    
+    [Tooltip("Mouse movement threshold to start winding up.")]
+    public float mouseThreshold = 0.5f;
+    
+    [Tooltip("Cooldown after completing an attack.")]
+    public float attackCooldown = 0.5f;
+    
     [Header("Audio")]
-    [Tooltip("Sound played when swinging the weapon.")]
-    public AudioClip swingSound;
+    [Tooltip("Sound played when winding up.")]
+    public AudioClip windupSound;
+    
+    [Tooltip("Sound played when attacking.")]
+    public AudioClip attackSound;
     
     [Tooltip("Sound played when hitting an object.")]
     public AudioClip hitSound;
     
-    private bool isSwinging = false;
-    private bool canSwing = true;
-    private float swingTimer = 0f;
-    private float cooldownTimer = 0f;
-    private Vector3 lastSwingDirection;
+    private WeaponState currentState = WeaponState.Idle;
     private AudioSource audioSource;
+    private Rigidbody rb;
+    
+    // Position tracking
+    private Vector3 currentPosition;
+    private Vector3 targetPosition;
+    private int windupDirection = 0; // -1 for left, 1 for right, 0 for none
+    private bool isSwingFullyWoundUp = false; // Tracks if swing reached max position
+    
+    // Cooldown
+    private float cooldownTimer = 0f;
+    private bool isOnCooldown = false;
+    private bool isInteractHeld = false;
+    
+    // Camera unlock delay
+    private float cameraUnlockDelay = 0.3f;
+    private float cameraUnlockTimer = 0.5f;
+    private bool waitingToUnlockCamera = false;
+    
+    // Equipped state
+    private bool isEquipped = false;
+    
+    // Reference to parent ItemHolder
+    private Transform itemHolder;
     
     protected override void Start()
     {
@@ -47,101 +87,296 @@ public class WeaponItem : PickableItem
         isStorable = true;
         canBeUsedFromInventory = true;
         
+        // Get rigidbody
+        rb = GetComponent<Rigidbody>();
+        
         // Get or add audio source
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
             audioSource = gameObject.AddComponent<AudioSource>();
         }
-        audioSource.spatialBlend = 1f; // 3D sound
+        audioSource.spatialBlend = 1f;
         audioSource.playOnAwake = false;
+        
+        // Initialize to Idle state
+        currentState = WeaponState.Idle;
+        windupDirection = 0;
+        
+        // Ensure rigidbody is kinematic at start
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
     }
     
     void Update()
     {
-        // Update swing timer
-        if (isSwinging)
+        // Handle camera unlock delay
+        if (waitingToUnlockCamera)
         {
-            swingTimer += Time.deltaTime;
-            if (swingTimer >= swingDuration)
+            cameraUnlockTimer += Time.deltaTime;
+            if (cameraUnlockTimer >= cameraUnlockDelay)
             {
-                EndSwing();
+                FirstPersonController fpc = FindFirstObjectByType<FirstPersonController>();
+                if (fpc != null)
+                {
+                    fpc.SetCameraLocked(false);
+                }
+                waitingToUnlockCamera = false;
+                cameraUnlockTimer = 0f;
             }
         }
         
-        // Update cooldown timer
-        if (!canSwing)
+        // Handle cooldown
+        if (isOnCooldown)
         {
             cooldownTimer += Time.deltaTime;
-            if (cooldownTimer >= swingCooldown)
+            if (cooldownTimer >= attackCooldown)
             {
-                canSwing = true;
+                isOnCooldown = false;
                 cooldownTimer = 0f;
+            }
+            return;
+        }
+        
+        // Only update weapon position/rotation when equipped
+        if (!isEquipped) return;
+        
+        // Check if interact is released during Swing state
+        if (currentState == WeaponState.Swing && !isInteractHeld)
+        {
+            // Interrupt swing and return to idle
+            currentState = WeaponState.Idle;
+            windupDirection = 0;
+            isSwingFullyWoundUp = false;
+            
+            // Unlock camera
+            FirstPersonController fpc = FindFirstObjectByType<FirstPersonController>();
+            if (fpc != null)
+            {
+                fpc.SetCameraLocked(false);
+            }
+        }
+        
+        // Update position based on current state
+        switch (currentState)
+        {
+            case WeaponState.Idle:
+                // Smoothly return to idle position
+                targetPosition = idlePositionOffset;
+                currentPosition = Vector3.Lerp(currentPosition, targetPosition, Time.deltaTime * positionSpeed);
+                // Keep idle rotation
+                transform.localRotation = Quaternion.Euler(idleRotation);
+                break;
+                
+            case WeaponState.Swing:
+                // Move toward windup position
+                currentPosition = Vector3.MoveTowards(currentPosition, targetPosition, positionSpeed * Time.deltaTime);
+                // Keep idle rotation during swing
+                transform.localRotation = Quaternion.Euler(idleRotation);
+                
+                // Check if reached max windup
+                if (Vector3.Distance(currentPosition, targetPosition) < 0.01f)
+                {
+                    // Fully wound up - ready to attack
+                    isSwingFullyWoundUp = true;
+                }
+                break;
+                
+            case WeaponState.Attack:
+                // Move weapon towards center of screen (top of weapon hits crosshair)
+                currentPosition = Vector3.MoveTowards(currentPosition, attackCenterPosition, positionSpeed * 2f * Time.deltaTime);
+                // Keep idle rotation during attack
+                transform.localRotation = Quaternion.Euler(idleRotation);
+                
+                // Check if swing completed
+                if (Vector3.Distance(currentPosition, attackCenterPosition) < 0.01f)
+                {
+                    EndAttack();
+                }
+                break;
+        }
+        
+        // Apply position to weapon's local transform
+        transform.localPosition = currentPosition;
+    }
+    
+    /// <summary>
+    /// Called by FirstPersonController when left click is held and mouse moves.
+    /// </summary>
+    public void OnMouseMove(Vector2 mouseDelta)
+    {
+        if (isOnCooldown) return;
+        
+        float horizontalMovement = mouseDelta.x;
+        
+        // Check for significant horizontal mouse movement
+        if (Mathf.Abs(horizontalMovement) < mouseThreshold) return;
+        
+        int moveDirection = horizontalMovement > 0 ? 1 : -1; // 1 = right, -1 = left
+        
+        switch (currentState)
+        {
+            case WeaponState.Idle:
+                // Only allow starting windup by moving right AND holding interact
+                if (moveDirection > 0 && isInteractHeld)
+                {
+                    Debug.Log("Start windup");
+                    StartWindup(moveDirection);
+                }
+                break;
+                
+            case WeaponState.Swing:
+                // Only trigger attack when moving left AND interact is held AND swing is fully wound up
+                if (moveDirection < 0 && isInteractHeld && isSwingFullyWoundUp)
+                {
+                    Debug.Log("Start attack");
+                    StartAttack();
+                }
+                // Otherwise, continue winding up further if not at max
+                break;
+                
+            case WeaponState.Attack:
+                // Already attacking, ignore input
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Called when left click is released.
+    /// </summary>
+    public void OnMouseRelease()
+    {
+        if (currentState == WeaponState.Swing)
+        {
+            // Released before attacking - return to idle
+            currentState = WeaponState.Idle;
+            windupDirection = 0;
+            
+            // Unlock camera
+            FirstPersonController fpc = FindFirstObjectByType<FirstPersonController>();
+            if (fpc != null)
+            {
+                Debug.Log("Cam unlocked");
+                fpc.SetCameraLocked(false);
             }
         }
     }
     
     /// <summary>
-    /// Called by FirstPersonController when player is holding interact and moving mouse.
+    /// Called by FirstPersonController to set interact button state.
     /// </summary>
-    public void TrySwing(Vector2 mouseDelta)
+    public void SetInteractHeld(bool held)
     {
-        if (!canSwing || isSwinging) return;
-        
-        // Check if mouse movement exceeds threshold
-        float mouseSpeed = mouseDelta.magnitude;
-        if (mouseSpeed < swingThreshold) return;
-        
-        StartSwing(mouseDelta);
+        isInteractHeld = held;
     }
     
-    private void StartSwing(Vector2 mouseDelta)
+    private void StartWindup(int direction)
     {
-        isSwinging = true;
-        canSwing = false;
-        swingTimer = 0f;
-        cooldownTimer = 0f;
+        currentState = WeaponState.Swing;
+        windupDirection = direction;
+        isSwingFullyWoundUp = false;
         
-        // Notify FirstPersonController to lock camera
+        // Lock camera during windup
         FirstPersonController fpc = FindFirstObjectByType<FirstPersonController>();
         if (fpc != null)
         {
             fpc.SetCameraLocked(true);
         }
         
-        // Calculate swing direction based on mouse movement
-        lastSwingDirection = new Vector3(mouseDelta.x, mouseDelta.y, 1f).normalized;
-        
-        // Apply force to weapon rigidbody for visual feedback
-        Rigidbody rb = GetComponent<Rigidbody>();
-        if (rb != null)
+        // Set target position for windup
+        // Moving left (direction = -1): go to left-high position
+        // Moving right (direction = 1): go to right-high position
+        if (direction < 0)
         {
-            Vector3 worldSwingDir = Camera.main.transform.TransformDirection(lastSwingDirection);
-            rb.AddForce(worldSwingDir * swingForce, ForceMode.Impulse);
+            targetPosition = new Vector3(-0.5f, -0.1f, -0.1f); // Left side, raised
         }
-        
-        // Play swing sound
-        if (swingSound != null && audioSource != null)
+         else
         {
-            audioSource.PlayOneShot(swingSound);
+            targetPosition = new Vector3(0.5f, -0.1f, -0.1f); // Right side, raised
+        } 
+        
+        // Play windup sound
+        if (windupSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(windupSound);
         }
     }
     
-    private void EndSwing()
+    private void StartAttack()
     {
-        isSwinging = false;
+        currentState = WeaponState.Attack;
         
-        // Unlock camera
+        // Target is center of screen for precise aiming
+        targetPosition = attackCenterPosition;
+        
+        // Lock camera during attack
         FirstPersonController fpc = FindFirstObjectByType<FirstPersonController>();
         if (fpc != null)
         {
-            fpc.SetCameraLocked(false);
+            fpc.SetCameraLocked(true);
+        }
+        
+        // Make rigidbody non-kinematic for physics during attack
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = false;
+            
+            // Apply force for physics-based collision
+            Vector3 forceDirection = transform.TransformDirection(new Vector3(-windupDirection, 0, 0));
+            rb.AddForce(forceDirection * 15f, ForceMode.Impulse);
+        }
+        
+        // Play attack sound
+        if (attackSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(attackSound);
+        }
+    }
+    
+    private void EndAttack()
+    {
+        currentState = WeaponState.Idle;
+        windupDirection = 0;
+        isOnCooldown = true;
+        cooldownTimer = 0f;
+        
+        // Reset velocities before making kinematic
+        if (rb != null)
+        {
+            rb.angularVelocity = Vector3.zero;
+            rb.linearVelocity = Vector3.zero;
+            rb.isKinematic = true;
+        }
+        
+        // Start camera unlock delay
+        waitingToUnlockCamera = true;
+        cameraUnlockTimer = 0f;
+    }
+    
+    public void SetEquipped(bool equipped)
+    {
+        isEquipped = equipped;
+        
+        if (equipped)
+        {
+            // Initialize position to idle offset
+            currentPosition = idlePositionOffset;
+            targetPosition = idlePositionOffset;
+            
+            // Set idle rotation
+            transform.localRotation = Quaternion.Euler(idleRotation);
+            transform.localPosition = currentPosition;
         }
     }
     
     void OnCollisionEnter(Collision collision)
     {
-        if (!isSwinging) return;
+        // Only deal damage during attack state
+        if (currentState != WeaponState.Attack) return;
         
         // Check if we hit something in the valid layers
         if (((1 << collision.gameObject.layer) & hitLayers) == 0) return;
@@ -150,7 +385,6 @@ public class WeaponItem : PickableItem
         EnemyAI enemy = collision.gameObject.GetComponent<EnemyAI>();
         if (enemy != null)
         {
-            // Deal damage to enemy
             DamageEnemy(enemy);
             
             // Play hit sound
@@ -158,48 +392,28 @@ public class WeaponItem : PickableItem
             {
                 audioSource.PlayOneShot(hitSound);
             }
-            
-            // End swing after successful hit
-            EndSwing();
             return;
         }
         
         // Hit something else (environmental object)
         if (hitSound != null && audioSource != null)
         {
-            audioSource.PlayOneShot(hitSound, 0.5f); // Lower volume for non-enemy hits
+            audioSource.PlayOneShot(hitSound, 0.5f);
         }
     }
     
     private void DamageEnemy(EnemyAI enemy)
     {
-        // Apply damage
         enemy.TakeDamage(damage);
         Debug.Log($"Hit enemy with {itemName} for {damage} damage!");
         
-        // Apply knockback force
+        // Apply knockback
         Rigidbody enemyRb = enemy.GetComponent<Rigidbody>();
         if (enemyRb != null)
         {
             Vector3 knockbackDir = (enemy.transform.position - transform.position).normalized;
-            enemyRb.AddForce(knockbackDir * swingForce * 0.5f, ForceMode.Impulse);
+            enemyRb.AddForce(knockbackDir * 10f, ForceMode.Impulse);
         }
-    }
-    
-    /// <summary>
-    /// Check if weapon is currently being swung.
-    /// </summary>
-    public bool IsSwinging()
-    {
-        return isSwinging;
-    }
-    
-    /// <summary>
-    /// Check if weapon can swing (not on cooldown).
-    /// </summary>
-    public bool CanSwing()
-    {
-        return canSwing;
     }
     
     /// <summary>
@@ -211,23 +425,33 @@ public class WeaponItem : PickableItem
         return false;
     }
     
+    public WeaponState GetCurrentState()
+    {
+        Debug.Log($"Weapon State: {currentState}");
+        return currentState;
+    }
+    
+    public bool IsOnCooldown()
+    {
+        return isOnCooldown;
+    }
+    
     void OnDrawGizmosSelected()
     {
-        // Draw swing indicator when swinging
-        if (isSwinging)
+        // Visual feedback for weapon state
+        switch (currentState)
         {
-            Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(transform.position, 0.5f);
+            case WeaponState.Idle:
+                Gizmos.color = Color.green;
+                break;
+            case WeaponState.Swing:
+                Gizmos.color = Color.yellow;
+                break;
+            case WeaponState.Attack:
+                Gizmos.color = Color.red;
+                break;
         }
-        else if (canSwing)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(transform.position, 0.3f);
-        }
-        else
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position, 0.3f);
-        }
+        
+        Gizmos.DrawWireSphere(transform.position, 0.2f);
     }
 }

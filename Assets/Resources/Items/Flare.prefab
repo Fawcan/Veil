@@ -159,7 +159,7 @@ MonoBehaviour:
   itemId: 77
   itemName: Flare
   itemDescription: Lights up stuff
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 1abab74b2722a1048874035bf5a847fa, type: 3}
   isStorable: 1
   canBeUsedFromInventory: 1
   canBeDiscarded: 1
